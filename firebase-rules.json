@@ -1,0 +1,19 @@
+{
+  "rules": {
+    "tasks": {
+      ".read": true,
+      ".write": false,
+      "$taskId": {
+        ".write": "auth == null"
+      }
+    },
+    "helpers": {
+      ".read": false,
+      ".write": false,
+      "$helperId": {
+        ".read": true,
+        ".write": true
+      }
+    }
+  }
+}

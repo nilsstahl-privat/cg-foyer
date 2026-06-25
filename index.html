@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foyer-Umbau CG – Helfer gesucht</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="offline-banner" class="offline-banner">Keine Internetverbindung – Einträge werden nicht gespeichert.</div>
+
+<div class="header">
+  <img src="assets/dots-light.svg" class="header-dots" alt="">
+  <img src="assets/up-light.svg" class="header-arrows" alt="">
+  <h1>Foyer-Umbau<br>Christusgemeinde</h1>
+  <p>2.–19. Juli 2026 · Wir freuen uns über jede helfende Hand!</p>
+  <div class="header-meta">
+    <div class="header-stat" id="stat-helpers"><strong>—</strong>Helfer</div>
+    <div class="header-stat" id="stat-open"><strong>—</strong>Plätze frei</div>
+    <div class="header-stat"><strong>13</strong>Tage</div>
+  </div>
+</div>
+
+<div class="main" id="main-content">
+  <div class="loading">Lädt…</div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal" id="modal">
+    <div class="modal-handle"></div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<script src="js/config.js"></script>
+<script src="js/seed-data.js"></script>
+<script>
+firebase.initializeApp(CONFIG.firebase);
+const db = firebase.database();
+
+let allTasks = {}, allHelpers = {}, prevHelperCount = 0;
+
+const SKILL_LABELS = {
+  jeder: "✋ Jeder willkommen",
+  handwerklich: "🔧 Handwerklich",
+  fachkenntnisse: "⚡ Fachkenntnisse"
+};
+
+// ── Offline ──────────────────────────────────────────────────────────────────
+window.addEventListener('offline', () => document.getElementById('offline-banner').classList.add('visible'));
+window.addEventListener('online',  () => document.getElementById('offline-banner').classList.remove('visible'));
+
+// ── Seed ─────────────────────────────────────────────────────────────────────
+db.ref("tasks").once("value", snap => {
+  if (!snap.exists()) {
+    const updates = {};
+    SEED_TASKS.forEach(t => { updates[t.id] = t; });
+    db.ref("tasks").update(updates);
+  }
+});
+
+// ── Live data ─────────────────────────────────────────────────────────────────
+db.ref("tasks").on("value",   snap => { allTasks   = snap.val() || {}; render(); updateStats(); });
+db.ref("helpers").on("value", snap => { allHelpers = snap.val() || {}; render(); updateStats(); });
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function updateStats() {
+  const newCount = Object.keys(allHelpers).length;
+  const helperEl = document.getElementById("stat-helpers");
+
+  if (newCount > prevHelperCount && prevHelperCount > 0) {
+    helperEl.classList.remove("stat-animate");
+    void helperEl.offsetWidth;
+    helperEl.classList.add("stat-animate");
+    helperEl.addEventListener("animationend", () => helperEl.classList.remove("stat-animate"), { once: true });
+  }
+  prevHelperCount = newCount;
+
+  const helpersByTask = {};
+  Object.values(allHelpers).forEach(h => {
+    helpersByTask[h.taskId] = (helpersByTask[h.taskId] || 0) + 1;
+  });
+  let openSpots = 0;
+  Object.values(allTasks).forEach(t => {
+    if (!t.done && t.neededPersons) {
+      openSpots += Math.max(0, t.neededPersons - (helpersByTask[t.id] || 0));
+    }
+  });
+
+  helperEl.innerHTML = `<strong>${newCount}</strong>Helfer`;
+  document.getElementById("stat-open").innerHTML = `<strong>${openSpots}</strong>Plätze frei`;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  const days = {};
+  Object.values(allTasks).forEach(t => {
+    const k = t.dayNumber;
+    if (!days[k]) days[k] = { label: t.dayLabel, subtitle: t.daySubtitle, tasks: [] };
+    days[k].tasks.push(t);
+  });
+
+  const helpersByTask = {};
+  Object.values(allHelpers).forEach(h => {
+    helpersByTask[h.taskId] = (helpersByTask[h.taskId] || 0) + 1;
+  });
+
+  const sorted = Object.keys(days).sort((a, b) => Number(a) - Number(b));
+  const urlTag = new URLSearchParams(location.search).get("tag");
+
+  let html = "";
+  sorted.forEach(dayKey => {
+    const day = days[dayKey];
+    const tasks = day.tasks.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    let totalNeeded = 0, totalFilled = 0;
+    tasks.forEach(t => {
+      if (!t.done) {
+        totalNeeded += (t.neededPersons || 0);
+        totalFilled += Math.min((helpersByTask[t.id] || 0), t.neededPersons || 0);
+      }
+    });
+    const open = totalNeeded - totalFilled;
+    const allDone = tasks.every(t => t.done);
+    const shouldOpen = urlTag === String(dayKey);
+
+    let dotClass = "dot-open", badgeClass = "badge-needed";
+    let badgeText = open > 0 ? `${open} Platz${open !== 1 ? "ätze" : ""} frei` : "Besetzt ✓";
+    if (allDone) { dotClass = "dot-done"; badgeClass = "badge-done"; badgeText = "Fertig ✓"; }
+    else if (open <= 0) badgeClass = "badge-full";
+
+    html += `<div class="day-card${shouldOpen ? " open" : ""}" id="day-${dayKey}">
+      <div class="day-header" onclick="toggleDay('day-${dayKey}')">
+        <div class="day-dot ${dotClass}"></div>
+        <div class="day-info">
+          <div class="day-title">${day.label}</div>
+          <div class="day-sub">${day.subtitle}</div>
+        </div>
+        <span class="day-badge ${badgeClass}">${badgeText}</span>
+        <span class="day-chevron">▼</span>
+      </div>
+      <div class="day-tasks">`;
+
+    tasks.forEach(task => {
+      const count = helpersByTask[task.id] || 0;
+      const needed = task.neededPersons;
+      const spotsLeft = needed !== null ? Math.max(0, needed - count) : null;
+
+      const spotsHtml = needed !== null
+        ? `<span class="spots-tag ${spotsLeft > 0 ? "spots-needed" : "spots-full"}">${spotsLeft > 0 ? `${spotsLeft} von ${needed} frei` : "Besetzt ✓"}</span>`
+        : "";
+
+      const toolsHtml = task.tools?.length
+        ? `<div class="task-tools">Werkzeug: ${task.tools.join(", ")}</div>` : "";
+      const notesHtml = task.notes
+        ? `<div class="task-detail" style="color:var(--teal-dark);margin-top:2px">${task.notes}</div>` : "";
+      const btnHtml = !task.done
+        ? `<button class="btn-register" onclick="openModal('${task.id}')">Eintragen →</button>` : "";
+
+      html += `<div class="task-item ${task.done ? "done-task" : ""}">
+        ${task.done ? '<span class="task-done-icon">✓</span>' : ""}
+        <div class="task-body">
+          <div class="task-title">${task.title}</div>
+          <div class="task-meta">
+            <span class="skill-badge skill-${task.skillLevel}">${SKILL_LABELS[task.skillLevel]}</span>
+            ${task.estimatedHours !== null ? `<span class="task-detail">ca. ${task.estimatedHours}h</span>` : ""}
+            ${spotsHtml}
+          </div>
+          ${toolsHtml}${notesHtml}${btnHtml}
+        </div>
+      </div>`;
+    });
+
+    html += `</div></div>`;
+  });
+
+  document.getElementById("main-content").innerHTML = html || '<div class="loading">Lädt…</div>';
+
+  // Scroll to tag if specified
+  if (urlTag) {
+    setTimeout(() => {
+      const el = document.getElementById(`day-${urlTag}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  }
+}
+
+function toggleDay(id) {
+  document.getElementById(id).classList.toggle("open");
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+let currentTaskId = null;
+
+function openModal(taskId) {
+  currentTaskId = taskId;
+  const task = allTasks[taskId];
+  if (!task) return;
+
+  const toolChecks = task.tools?.length
+    ? `<div class="form-group">
+        <label class="form-label">Werkzeug aus der Aufgabe, das ich mitbringen kann</label>
+        <div class="tools-grid">${task.tools.map(t =>
+          `<label class="tool-check"><input type="checkbox" name="tool" value="${t}"> ${t}</label>`
+        ).join("")}</div>
+      </div>` : "";
+
+  document.getElementById("modal-body").innerHTML = `
+    <div class="modal-title">${task.title}</div>
+    <div class="modal-sub">${task.dayLabel} · ${task.daySubtitle}</div>
+    <form id="reg-form">
+      <div class="form-group">
+        <label class="form-label">Dein Name *</label>
+        <input class="form-input" type="text" id="f-name" placeholder="Vorname Nachname" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Uhrzeit (optional)</label>
+        <div class="time-row">
+          <input class="form-input" type="time" id="f-from">
+          <input class="form-input" type="time" id="f-to">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Kommentar (optional)</label>
+        <textarea class="form-input" id="f-comment" placeholder="z.B. Komme erst um 10, bringe meinen Sohn mit…"></textarea>
+      </div>
+      ${toolChecks}
+      <div class="form-group">
+        <label class="form-label">Weiteres Werkzeug das ich mitbringe (optional)</label>
+        <input class="form-input" type="text" id="f-tools-extra" placeholder="z.B. Stichsäge, Schleifpapier…">
+      </div>
+      <div class="form-group">
+        <label class="form-label">E-Mail (optional, für Bestätigung & Stornierungslink)</label>
+        <input class="form-input" type="email" id="f-email" placeholder="name@beispiel.de">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="closeModal()">Abbrechen</button>
+        <button type="submit" class="btn-submit" id="submit-btn">Eintragen ✓</button>
+      </div>
+    </form>`;
+
+  document.getElementById("reg-form").addEventListener("submit", submitRegistration);
+  document.getElementById("modal-overlay").classList.remove("hidden");
+  document.getElementById("f-name").focus();
+}
+
+function closeModal() {
+  document.getElementById("modal-overlay").classList.add("hidden");
+  currentTaskId = null;
+}
+document.getElementById("modal-overlay").addEventListener("click", e => {
+  if (e.target === document.getElementById("modal-overlay")) closeModal();
+});
+
+async function submitRegistration(e) {
+  e.preventDefault();
+  const task    = allTasks[currentTaskId];
+  const name    = document.getElementById("f-name").value.trim();
+  const from    = document.getElementById("f-from").value;
+  const to      = document.getElementById("f-to").value;
+  const comment = document.getElementById("f-comment").value.trim();
+  const email   = document.getElementById("f-email").value.trim();
+  const extraTools = document.getElementById("f-tools-extra").value.trim();
+  const checkedTools = [...document.querySelectorAll("input[name='tool']:checked")].map(i => i.value);
+  const allTools = [...checkedTools, ...(extraTools ? [extraTools] : [])];
+
+  if (!name) return;
+
+  const btn = document.getElementById("submit-btn");
+  btn.disabled = true; btn.textContent = "Wird gespeichert…";
+
+  const cancelToken = Math.random().toString(36).substr(2, 14);
+  const ref = db.ref("helpers").push();
+
+  await ref.set({
+    taskId: currentTaskId, taskTitle: task.title,
+    dayNumber: task.dayNumber, date: task.date, dayLabel: task.dayLabel,
+    name, from: from || null, to: to || null,
+    comment: comment || null, email: email || null,
+    tools: allTools, cancelToken,
+    registeredAt: Date.now()
+  });
+
+  showSuccess({ name, task, from, to, tools: allTools, comment, helperId: ref.key, cancelToken, email });
+}
+
+function showSuccess({ name, task, from, to, tools, comment, helperId, cancelToken }) {
+  const helpersByTask = {};
+  Object.values(allHelpers).forEach(h => {
+    helpersByTask[h.taskId] = (helpersByTask[h.taskId] || 0) + 1;
+  });
+  const suggestion = Object.values(allTasks).find(t =>
+    t.dayNumber !== task.dayNumber && !t.done && t.neededPersons !== null &&
+    (helpersByTask[t.id] || 0) < t.neededPersons
+  );
+
+  const timeStr = from ? ` · ${from}${to ? "–" + to : " Uhr"}` : "";
+  const cancelUrl = `${location.origin}${location.pathname.replace("index.html","").replace(/\/$/,"")+"/"}cancel.html?id=${helperId}&token=${cancelToken}`;
+
+  const suggHtml = suggestion ? `<div class="suggestion-box">
+    <p>An <strong>${suggestion.dayLabel}</strong> werden noch Helfer gesucht – auch dabei?</p>
+    <button class="btn-suggestion" onclick="closeAndOpen('${suggestion.id}')">Für weiteren Tag eintragen</button>
+  </div>` : "";
+
+  document.getElementById("modal-body").innerHTML = `
+    <div class="success-card">
+      <div class="success-icon">✓</div>
+      <h2>Danke, ${name}!</h2>
+      <p>Du bist für <strong>${task.title}</strong><br>${task.dayLabel}${timeStr} eingetragen.</p>
+      ${tools.length ? `<p style="margin-top:5px;font-size:0.72rem;color:var(--text-muted)">Werkzeug: ${tools.join(", ")}</p>` : ""}
+      ${comment ? `<p style="margin-top:4px;font-size:0.72rem;color:var(--text-muted);font-style:italic">"${comment}"</p>` : ""}
+      <a class="btn-ical" href="${generateIcalLink(task, from, to, name)}" download="helfer-${task.date}.ics">📅 Zum Kalender hinzufügen</a>
+      ${suggHtml}
+      <button class="btn-cancel-entry" onclick="confirmCancel('${cancelUrl}')">Ich kann doch nicht kommen (Eintrag stornieren)</button>
+      <button class="btn-close-modal" onclick="closeModal()">Zur Übersicht zurück</button>
+    </div>`;
+}
+
+function confirmCancel(url) {
+  if (confirm("Möchtest du deinen Eintrag wirklich stornieren?")) {
+    window.location.href = url;
+  }
+}
+
+function closeAndOpen(taskId) {
+  closeModal();
+  setTimeout(() => openModal(taskId), 200);
+}
+
+// ── iCal ──────────────────────────────────────────────────────────────────────
+function generateIcalLink(task, from, to, name) {
+  const d = task.date.replace(/-/g, "");
+  const dtStartStr = from
+    ? `DTSTART:${d}T${from.replace(":", "").padEnd(4, "0")}00`
+    : `DTSTART;VALUE=DATE:${d}`;
+  const endTime = to || addHours(from || "09:00", task.estimatedHours || 2);
+  const dtEndStr = from
+    ? `DTEND:${d}T${endTime.replace(":", "").padEnd(4, "0")}00`
+    : `DTEND;VALUE=DATE:${nextDay(task.date).replace(/-/g, "")}`;
+
+  const ical = [
+    "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CG Foyer Umbau//DE","CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:${task.id}-${Date.now()}@cg-foyer`,
+    dtStartStr, dtEndStr,
+    `SUMMARY:Helfen: ${task.title} – CG Foyer`,
+    `DESCRIPTION:Aufgabe: ${task.title}\\nHelfer: ${name}\\nOrt: ${CONFIG.venue.name}`,
+    `LOCATION:${CONFIG.venue.name}\\, ${CONFIG.venue.address}\\, ${CONFIG.venue.city}`,
+    "END:VEVENT","END:VCALENDAR"
+  ].join("\r\n");
+
+  return "data:text/calendar;charset=utf-8," + encodeURIComponent(ical);
+}
+
+function addHours(t, h) {
+  const [hh, mm] = t.split(":").map(Number);
+  return `${String(Math.min(hh + Math.floor(h || 2), 23)).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+function nextDay(dateStr) {
+  const d = new Date(dateStr); d.setDate(d.getDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foyer-Umbau – Admin</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="header">
+  <img src="assets/dots-light.svg" class="header-dots" alt="">
+  <h1>Admin</h1>
+  <p>Aufgaben verwalten · Helfer einsehen</p>
+</div>
+
+<div class="page-nav">
+  <a href="index.html">← Helfer-Seite</a>
+  <a href="dashboard.html">Übersicht</a>
+</div>
+
+<div id="auth-screen" class="auth-screen">
+  <h2>Admin-Zugang</h2>
+  <p>Bitte gib den Admin-Code ein.</p>
+  <input class="form-input" type="password" id="key-input" placeholder="Admin-Code" style="text-align:center;font-size:1.1rem;letter-spacing:.12em">
+  <p class="auth-error hidden" id="auth-error">Falscher Code.</p>
+  <button class="btn-primary" style="width:100%;margin-top:12px" onclick="checkKey()">Weiter</button>
+</div>
+
+<div id="admin-content" class="main hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 0">
+    <div class="section-title" style="padding:0">Aufgaben</div>
+    <button class="btn-export" onclick="exportCSV()">Export CSV</button>
+  </div>
+
+  <div class="filter-chips" id="day-filter"></div>
+  <button class="btn-add-task" onclick="openTaskForm(null)">+ Neue Aufgabe hinzufügen</button>
+  <div id="tasks-container"></div>
+
+  <div class="section-title" style="margin-top:8px">Helfer-Übersicht</div>
+  <div id="helpers-container"></div>
+</div>
+
+<!-- Task modal -->
+<div class="modal-overlay hidden" id="task-modal-overlay">
+  <div class="modal"><div class="modal-handle"></div><div id="task-modal-body"></div></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<script src="js/config.js"></script>
+<script src="js/seed-data.js"></script>
+<script>
+firebase.initializeApp(CONFIG.firebase);
+const db = firebase.database();
+let allTasks = {}, allHelpers = {}, filterDay = null;
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+const urlKey = new URLSearchParams(location.search).get("key");
+if (urlKey === CONFIG.adminKey) authorize();
+
+function checkKey() {
+  if (document.getElementById("key-input").value.trim() === CONFIG.adminKey) authorize();
+  else {
+    document.getElementById("auth-error").classList.remove("hidden");
+    document.getElementById("key-input").value = "";
+  }
+}
+document.getElementById("key-input").addEventListener("keydown", e => { if (e.key === "Enter") checkKey(); });
+
+function authorize() {
+  document.getElementById("auth-screen").classList.add("hidden");
+  document.getElementById("admin-content").classList.remove("hidden");
+  db.ref("tasks").on("value",   snap => { allTasks   = snap.val() || {}; renderTasks(); });
+  db.ref("helpers").on("value", snap => { allHelpers = snap.val() || {}; renderHelpers(); });
+}
+
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+function buildFilter() {
+  const days = {};
+  Object.values(allTasks).forEach(t => { days[t.dayNumber] = t.dayLabel; });
+  let html = `<button class="chip ${filterDay === null ? "active" : ""}" onclick="setFilter(null)">Alle</button>`;
+  Object.keys(days).sort((a,b)=>Number(a)-Number(b)).forEach(k => {
+    html += `<button class="chip ${filterDay === Number(k) ? "active" : ""}" onclick="setFilter(${k})">Tag ${k}</button>`;
+  });
+  document.getElementById("day-filter").innerHTML = html;
+}
+function setFilter(day) { filterDay = day; renderTasks(); buildFilter(); }
+
+function renderTasks() {
+  buildFilter();
+  const helpersByTask = {};
+  Object.values(allHelpers).forEach(h => { helpersByTask[h.taskId] = (helpersByTask[h.taskId] || 0) + 1; });
+
+  const tasks = Object.values(allTasks)
+    .filter(t => filterDay === null || t.dayNumber === filterDay)
+    .sort((a, b) => a.dayNumber - b.dayNumber || (a.order || 0) - (b.order || 0));
+
+  const SKILL = { jeder: "✋ Jeder", handwerklich: "🔧 Handwerklich", fachkenntnisse: "⚡ Fachkenntnisse" };
+  let lastDay = null, html = "";
+
+  tasks.forEach(t => {
+    if (t.dayLabel !== lastDay) {
+      html += `<div class="section-title" style="padding-top:12px">${t.dayLabel} <span style="font-weight:400;color:var(--text-muted)">· ${t.daySubtitle}</span></div>`;
+      lastDay = t.dayLabel;
+    }
+    const hCount = helpersByTask[t.id] || 0;
+    html += `<div class="admin-task-row ${t.done ? "done-task" : ""}">
+      <input type="checkbox" class="admin-task-check" ${t.done ? "checked" : ""} onchange="toggleDone('${t.id}', this.checked)">
+      <div class="admin-task-info">
+        <div class="admin-task-title">${t.title}</div>
+        <div class="admin-task-sub">${SKILL[t.skillLevel]} · ${t.neededPersons ?? "?"}p · ${hCount} Helfer</div>
+        ${t.notes ? `<div class="admin-task-sub" style="color:var(--teal-dark)">${t.notes}</div>` : ""}
+      </div>
+      <button class="btn-edit" onclick="openTaskForm('${t.id}')">Bearbeiten</button>
+      <button class="btn-delete" onclick="deleteTask('${t.id}')">✕</button>
+    </div>`;
+  });
+  document.getElementById("tasks-container").innerHTML = html || '<div class="empty-state">Keine Aufgaben</div>';
+}
+
+function toggleDone(id, val) { db.ref(`tasks/${id}/done`).set(val); }
+
+async function deleteTask(id) {
+  if (!confirm("Aufgabe wirklich löschen?")) return;
+  await db.ref(`tasks/${id}`).remove();
+}
+
+// ── Task form ─────────────────────────────────────────────────────────────────
+function openTaskForm(taskId) {
+  const task = taskId ? allTasks[taskId] : null;
+  const dayNums = [...new Set(Object.values(allTasks).map(t => t.dayNumber))].sort((a, b) => a - b);
+  const dayOptions = dayNums.map(n => {
+    const ref = Object.values(allTasks).find(x => x.dayNumber === n);
+    const sel = task?.dayNumber === n ? "selected" : "";
+    return `<option value="${n}" data-label="${ref.dayLabel}" data-subtitle="${ref.daySubtitle}" ${sel}>${ref.dayLabel} – ${ref.daySubtitle}</option>`;
+  }).join("") + `<option value="new">+ Neuen Tag erstellen…</option>`;
+
+  document.getElementById("task-modal-body").innerHTML = `
+    <div class="modal-title">${task ? "Aufgabe bearbeiten" : "Neue Aufgabe"}</div>
+    <div style="height:12px"></div>
+    <form id="task-form">
+      <div class="form-group">
+        <label class="form-label">Tag *</label>
+        <select class="form-input" id="tf-day" required>${dayOptions}</select>
+      </div>
+      <div id="new-day-fields" class="hidden">
+        <div class="form-group"><label class="form-label">Tag-Nummer</label><input class="form-input" type="number" id="tf-daynum"></div>
+        <div class="form-group"><label class="form-label">Tag-Label (z.B. "Tag 14 – Sonntag")</label><input class="form-input" type="text" id="tf-daylabel"></div>
+        <div class="form-group"><label class="form-label">Datum</label><input class="form-input" type="date" id="tf-date"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Aufgabe *</label>
+        <input class="form-input" type="text" id="tf-title" value="${task?.title || ""}" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Skill-Level</label>
+        <select class="form-input" id="tf-skill">
+          <option value="jeder" ${task?.skillLevel === "jeder" ? "selected" : ""}>✋ Jeder willkommen</option>
+          <option value="handwerklich" ${task?.skillLevel === "handwerklich" ? "selected" : ""}>🔧 Handwerklich</option>
+          <option value="fachkenntnisse" ${task?.skillLevel === "fachkenntnisse" ? "selected" : ""}>⚡ Fachkenntnisse</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="form-group"><label class="form-label">Personenbedarf</label><input class="form-input" type="number" id="tf-persons" value="${task?.neededPersons ?? ""}"></div>
+        <div class="form-group"><label class="form-label">Geschätzte Stunden</label><input class="form-input" type="number" step="0.5" id="tf-hours" value="${task?.estimatedHours ?? ""}"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Werkzeug (kommagetrennt)</label>
+        <input class="form-input" type="text" id="tf-tools" value="${(task?.tools || []).join(", ")}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hinweis / Notiz</label>
+        <input class="form-input" type="text" id="tf-notes" value="${task?.notes || ""}">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="closeTaskModal()">Abbrechen</button>
+        <button type="submit" class="btn-submit">${task ? "Speichern" : "Erstellen"}</button>
+      </div>
+    </form>`;
+
+  document.getElementById("tf-day").addEventListener("change", e => {
+    document.getElementById("new-day-fields").classList.toggle("hidden", e.target.value !== "new");
+  });
+  document.getElementById("task-form").addEventListener("submit", e => saveTask(e, taskId));
+  document.getElementById("task-modal-overlay").classList.remove("hidden");
+}
+
+function closeTaskModal() { document.getElementById("task-modal-overlay").classList.add("hidden"); }
+document.getElementById("task-modal-overlay").addEventListener("click", e => {
+  if (e.target === document.getElementById("task-modal-overlay")) closeTaskModal();
+});
+
+async function saveTask(e, taskId) {
+  e.preventDefault();
+  const daySelect = document.getElementById("tf-day").value;
+  let dayNumber, dayLabel, daySubtitle, date;
+
+  if (daySelect === "new") {
+    dayNumber   = Number(document.getElementById("tf-daynum").value);
+    dayLabel    = document.getElementById("tf-daylabel").value.trim();
+    date        = document.getElementById("tf-date").value;
+    const d     = new Date(date);
+    daySubtitle = date ? d.toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" }) : "";
+  } else {
+    dayNumber = Number(daySelect);
+    const sel = document.getElementById("tf-day");
+    const opt = sel.options[sel.selectedIndex];
+    dayLabel    = opt.dataset.label;
+    daySubtitle = opt.dataset.subtitle;
+    date        = Object.values(allTasks).find(t => t.dayNumber === dayNumber)?.date || "";
+  }
+
+  const tools = document.getElementById("tf-tools").value.split(",").map(s => s.trim()).filter(Boolean);
+  const data = {
+    dayNumber, dayLabel, daySubtitle, date,
+    title:          document.getElementById("tf-title").value.trim(),
+    skillLevel:     document.getElementById("tf-skill").value,
+    neededPersons:  Number(document.getElementById("tf-persons").value) || null,
+    estimatedHours: Number(document.getElementById("tf-hours").value) || null,
+    tools, notes: document.getElementById("tf-notes").value.trim(),
+    done: taskId ? (allTasks[taskId]?.done || false) : false
+  };
+
+  if (taskId) {
+    await db.ref(`tasks/${taskId}`).update(data);
+  } else {
+    const id = `custom-${Date.now()}`;
+    await db.ref(`tasks/${id}`).set({ id, ...data });
+  }
+  closeTaskModal();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function renderHelpers() {
+  const helpers = Object.entries(allHelpers)
+    .map(([id, h]) => ({ id, ...h }))
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+  document.getElementById("helpers-container").innerHTML = helpers.length
+    ? helpers.map(h => {
+        const timeStr = h.from ? ` · ${h.from}${h.to ? "–" + h.to : " Uhr"}` : "";
+        const emailStr = h.email ? ` · ${h.email}` : "";
+        const toolsHtml = h.tools?.length ? `<div class="admin-helper-tools">Werkzeug: ${h.tools.join(", ")}</div>` : "";
+        const commentHtml = h.comment ? `<div class="admin-helper-comment">"${h.comment}"</div>` : "";
+        return `<div class="admin-helper-row">
+          <div class="admin-helper-info">
+            <div class="admin-helper-name">${h.name}</div>
+            <div class="admin-helper-detail">${h.dayLabel} · ${h.taskTitle}${timeStr}${emailStr}</div>
+            ${toolsHtml}${commentHtml}
+          </div>
+          <button class="btn-delete" onclick="deleteHelper('${h.id}', '${h.name}')">✕</button>
+        </div>`;
+      }).join("")
+    : '<div class="empty-state">Noch keine Helfer</div>';
+}
+
+async function deleteHelper(id, name) {
+  if (!confirm(`Eintrag von "${name}" wirklich löschen?`)) return;
+  await db.ref(`helpers/${id}`).remove();
+}
+
+// ── CSV Export ────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const helpers = Object.values(allHelpers);
+  if (!helpers.length) { alert("Noch keine Helfer eingetragen."); return; }
+  const rows = [["Name", "Tag", "Aufgabe", "Datum", "Von", "Bis", "E-Mail", "Werkzeug", "Kommentar"]];
+  helpers.forEach(h => {
+    rows.push([h.name, h.dayLabel, h.taskTitle, h.date, h.from || "", h.to || "", h.email || "", (h.tools || []).join("; "), h.comment || ""]);
+  });
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = "data:text/csv;charset=utf-8," + encodeURIComponent("﻿" + csv);
+  a.download = `helfer-export-${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+}
+</script>
+</body>
+</html>

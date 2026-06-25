@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Eintrag stornieren</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="header" style="padding-bottom:24px">
+  <img src="assets/dots-light.svg" class="header-dots" alt="">
+  <h1>Eintrag stornieren</h1>
+  <p>Foyer-Umbau Christusgemeinde</p>
+</div>
+
+<div class="cancel-screen" id="cancel-screen">
+  <div class="loading">Prüfe Eintrag…</div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<script src="js/config.js"></script>
+<script>
+firebase.initializeApp(CONFIG.firebase);
+const db = firebase.database();
+
+const params = new URLSearchParams(location.search);
+const helperId   = params.get("id");
+const cancelToken = params.get("token");
+const screen = document.getElementById("cancel-screen");
+
+function show(icon, title, text, btn) {
+  screen.innerHTML = `
+    <div class="icon">${icon}</div>
+    <h2>${title}</h2>
+    <p>${text}</p>
+    ${btn || ""}
+    <br><a href="index.html" style="font-size:0.82rem;color:var(--text-muted)">← Zurück zur Helfer-Seite</a>`;
+}
+
+if (!helperId || !cancelToken) {
+  show("⚠️", "Ungültiger Link", "Dieser Stornierungslink ist nicht korrekt.");
+} else {
+  db.ref(`helpers/${helperId}`).once("value", snap => {
+    const helper = snap.val();
+    if (!helper) {
+      show("✓", "Bereits storniert", "Dieser Eintrag wurde bereits entfernt oder existiert nicht mehr.");
+    } else if (helper.cancelToken !== cancelToken) {
+      show("⚠️", "Ungültiger Link", "Das Token stimmt nicht überein. Bitte nutze den originalen Stornierungslink.");
+    } else {
+      // Show confirmation before deleting
+      screen.innerHTML = `
+        <div class="icon">🗓️</div>
+        <h2>Eintrag stornieren?</h2>
+        <p><strong>${helper.name}</strong><br>${helper.dayLabel} · ${helper.taskTitle}</p>
+        <br>
+        <button onclick="doCancel()" style="width:100%;padding:12px;background:#c0392b;color:white;border:none;border-radius:9px;font-size:0.9rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px">
+          Ja, Eintrag stornieren
+        </button>
+        <a href="index.html" style="display:block;text-align:center;font-size:0.82rem;color:var(--text-muted);padding:8px">Abbrechen – zurück zur Übersicht</a>`;
+    }
+  });
+}
+
+async function doCancel() {
+  await db.ref(`helpers/${helperId}`).remove();
+  show("✓", "Eintrag storniert", "Dein Eintrag wurde erfolgreich entfernt. Danke für deine Rückmeldung!",
+    `<br><a href="index.html" style="display:inline-block;margin-top:12px;padding:10px 20px;background:var(--teal);color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.875rem">Neu eintragen</a>`);
+}
+</script>
+</body>
+</html>

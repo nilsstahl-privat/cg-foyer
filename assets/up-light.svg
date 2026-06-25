@@ -1,0 +1,18 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" id="Ebene_2" data-name="Ebene 2" viewBox="0 0 43.54 145.6" width="43.540000915527344" height="145.60000610351562">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #c9c8c8;
+      }
+    </style>
+  </defs>
+  <g id="Ebene_1-2" data-name="Ebene 1">
+    <g>
+      <polygon class="cls-1" points="12.41 29.13 21.77 16.6 31.13 29.13 43.54 29.13 21.77 0 0 29.13 12.41 29.13 12.41 29.13"/>
+      <polygon class="cls-1" points="12.41 88.49 21.77 75.97 31.13 88.49 43.54 88.49 21.77 59.37 0 88.49 12.41 88.49 12.41 88.49"/>
+      <polygon class="cls-1" points="12.41 145.6 21.77 133.07 31.13 145.6 43.54 145.6 21.77 116.47 0 145.6 12.41 145.6 12.41 145.6"/>
+    </g>
+  </g>
+</svg>
