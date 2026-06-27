@@ -3,219 +3,409 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Foyer-Umbau CG – Helfer gesucht</title>
+  <title>Foyer-Umbau CG Hemmingen – Mitmachen</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
 <div id="offline-banner" class="offline-banner">Keine Internetverbindung – Einträge werden nicht gespeichert.</div>
+<div id="countdown-banner" class="countdown-banner hidden"></div>
 
 <div class="header">
   <img src="assets/dots-light.svg" class="header-dots" alt="">
-  <img src="assets/up-light.svg" class="header-arrows" alt="">
-  <h1>Foyer-Umbau<br>Christusgemeinde</h1>
-  <p>2.–19. Juli 2026 · Wir freuen uns über jede helfende Hand!</p>
+  <h1>FOYER-UMBAU</h1>
+  <p>CHRISTUSGEMEINDE HEMMINGEN</p>
   <div class="header-meta">
     <div class="header-stat" id="stat-helpers"><strong>—</strong>Helfer</div>
-    <div class="header-stat" id="stat-open"><strong>—</strong>Plätze frei</div>
+    <div class="header-stat" id="stat-pct"><strong>—</strong>% geschafft</div>
     <div class="header-stat"><strong>13</strong>Tage</div>
   </div>
+  <div class="header-progress">
+    <div class="header-progress-bar" id="header-progress-bar" style="width:0%"></div>
+  </div>
+  <div id="header-progress-label" style="font-size:0.65rem;color:rgba(255,255,255,0.5);margin-top:5px;letter-spacing:.02em">Wir fangen bald an!</div>
 </div>
 
 <div class="main" id="main-content">
   <div class="loading">Lädt…</div>
 </div>
 
-<!-- Modal -->
 <div class="modal-overlay hidden" id="modal-overlay">
-  <div class="modal" id="modal">
-    <div class="modal-handle"></div>
-    <div id="modal-body"></div>
-  </div>
+  <div class="modal"><div class="modal-handle"></div><div id="modal-body"></div></div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/seed-data.js"></script>
 <script>
 firebase.initializeApp(CONFIG.firebase);
 const db = firebase.database();
+if (CONFIG.emailjs.enabled) emailjs.init(CONFIG.emailjs.publicKey);
 
 let allTasks = {}, allHelpers = {}, prevHelperCount = 0;
 
-const SKILL_LABELS = {
-  jeder: "✋ Jeder willkommen",
-  handwerklich: "🔧 Handwerklich",
-  fachkenntnisse: "⚡ Fachkenntnisse"
-};
+// Auto-download .ics if opened from email calendar link
+(function() {
+  const p = new URLSearchParams(location.search);
+  if (p.get("ical") === "1") {
+    const date = p.get("date") || "";
+    const label = p.get("label") || "Foyer-Umbau";
+    const subtitle = p.get("sub") || "";
+    const from = p.get("from") || null;
+    const to = p.get("to") || null;
+    if (date) {
+      setTimeout(() => {
+        const link = generateIcalLink(date, label, subtitle, from, to, "Helfer");
+        const a = document.createElement("a");
+        a.href = link; a.download = `foyer-${date}.ics`; a.click();
+      }, 800);
+    }
+  }
+})();
 
-// ── Offline ──────────────────────────────────────────────────────────────────
 window.addEventListener('offline', () => document.getElementById('offline-banner').classList.add('visible'));
 window.addEventListener('online',  () => document.getElementById('offline-banner').classList.remove('visible'));
 
-// ── Seed ─────────────────────────────────────────────────────────────────────
 db.ref("tasks").once("value", snap => {
   if (!snap.exists()) {
     const updates = {};
     SEED_TASKS.forEach(t => { updates[t.id] = t; });
     db.ref("tasks").update(updates);
+  } else {
+    // One-time migrations
+    const DAY_FIX = {
+      2:{ label:"Tag 2 – Montag",     date:"2026-07-06", subtitle:"06. Juli 2026" },
+      3:{ label:"Tag 3 – Dienstag",   date:"2026-07-07", subtitle:"07. Juli 2026" },
+      4:{ label:"Tag 4 – Mittwoch",   date:"2026-07-08", subtitle:"08. Juli 2026" },
+      5:{ label:"Tag 5 – Donnerstag", date:"2026-07-09", subtitle:"09. Juli 2026" },
+      6:{ label:"Tag 6 – Freitag",    date:"2026-07-10", subtitle:"10. Juli 2026" },
+      7:{ label:"Tag 7 – Samstag",    date:"2026-07-11", subtitle:"11. Juli 2026" },
+      8:{ label:"Tag 8 – Montag",     date:"2026-07-13", subtitle:"13. Juli 2026" },
+      9:{ label:"Tag 9 – Dienstag",   date:"2026-07-14", subtitle:"14. Juli 2026" },
+      10:{ label:"Tag 10 – Mittwoch", date:"2026-07-15", subtitle:"15. Juli 2026" },
+      11:{ label:"Tag 11 – Donnerstag",date:"2026-07-16",subtitle:"16. Juli 2026" },
+      12:{ label:"Tag 12 – Freitag",  date:"2026-07-17", subtitle:"17. Juli 2026" },
+      13:{ label:"Tag 13 – Samstag",  date:"2026-07-18", subtitle:"18. Juli 2026" },
+    };
+    const updates = {};
+    snap.forEach(child => {
+      const t = child.val();
+      if (t.title && t.title.includes("GKP"))
+        updates[`${child.key}/title`] = t.title.replace(/GKP/g, "Gipskarton");
+      const fix = DAY_FIX[t.dayNumber];
+      if (fix) {
+        if (t.dayLabel !== fix.label)    updates[`${child.key}/dayLabel`]    = fix.label;
+        if (t.date    !== fix.date)      updates[`${child.key}/date`]        = fix.date;
+        if (t.daySubtitle !== fix.subtitle) updates[`${child.key}/daySubtitle`] = fix.subtitle;
+      }
+    });
+    if (Object.keys(updates).length) db.ref("tasks").update(updates);
   }
 });
 
-// ── Live data ─────────────────────────────────────────────────────────────────
-db.ref("tasks").on("value",   snap => { allTasks   = snap.val() || {}; render(); updateStats(); });
-db.ref("helpers").on("value", snap => { allHelpers = snap.val() || {}; render(); updateStats(); });
+db.ref("tasks").on("value",   snap => { allTasks   = snap.val() || {}; render(); });
+db.ref("helpers").on("value", snap => { allHelpers = snap.val() || {}; render(); });
 
-// ── Stats ─────────────────────────────────────────────────────────────────────
-function updateStats() {
-  const newCount = Object.keys(allHelpers).length;
+// ── Stats ──────────────────────────────────────────────────────────────────
+function calcStats() {
+  const tasks = Object.values(allTasks);
+  const totalH = tasks.reduce((s,t) => s + (t.estimatedHours||0)*(t.neededPersons||1), 0);
+  const doneH  = tasks.filter(t=>t.done).reduce((s,t) => s + (t.estimatedHours||0)*(t.neededPersons||1), 0);
+  const pct    = totalH > 0 ? Math.round(doneH/totalH*100) : 0;
+  return { totalH, doneH, pct, helperCount: Object.keys(allHelpers).length };
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function render() {
+  const tasks = Object.values(allTasks);
+  if (!tasks.length) { document.getElementById("main-content").innerHTML = '<div class="loading">Lädt…</div>'; return; }
+
+  const { totalH, doneH, pct, helperCount } = calcStats();
+  const newCount = helperCount;
   const helperEl = document.getElementById("stat-helpers");
-
   if (newCount > prevHelperCount && prevHelperCount > 0) {
-    helperEl.classList.remove("stat-animate");
-    void helperEl.offsetWidth;
-    helperEl.classList.add("stat-animate");
+    helperEl.classList.remove("stat-animate"); void helperEl.offsetWidth; helperEl.classList.add("stat-animate");
     helperEl.addEventListener("animationend", () => helperEl.classList.remove("stat-animate"), { once: true });
   }
   prevHelperCount = newCount;
+  helperEl.innerHTML = `<strong>${helperCount}</strong>Helfer`;
+  document.getElementById("stat-pct").innerHTML = `<strong>${pct}</strong>% geschafft`;
 
-  const helpersByTask = {};
-  Object.values(allHelpers).forEach(h => {
-    helpersByTask[h.taskId] = (helpersByTask[h.taskId] || 0) + 1;
-  });
-  let openSpots = 0;
-  Object.values(allTasks).forEach(t => {
-    if (!t.done && t.neededPersons) {
-      openSpots += Math.max(0, t.neededPersons - (helpersByTask[t.id] || 0));
+  // Header progress bar
+  document.getElementById("header-progress-bar").style.width = pct + "%";
+  document.getElementById("header-progress-label").textContent = pct > 0
+    ? `${pct}% der Arbeit geschafft · ${Math.round(doneH)} von ${Math.round(totalH)} Personenstunden`
+    : "Wir fangen bald an!";
+
+  // Countdown banner (only before start)
+  const startDate = new Date("2026-07-02T00:00:00");
+  const now = new Date();
+  const daysLeft = Math.ceil((startDate - now) / 86400000);
+  const countdownEl = document.getElementById("countdown-banner");
+  if (countdownEl) {
+    if (daysLeft > 0) {
+      countdownEl.textContent = `Noch ${daysLeft} Tag${daysLeft !== 1 ? "e" : ""} bis zum Umbau · Jetzt eintragen!`;
+      countdownEl.classList.remove("hidden");
+    } else {
+      countdownEl.classList.add("hidden");
     }
-  });
+  }
 
-  helperEl.innerHTML = `<strong>${newCount}</strong>Helfer`;
-  document.getElementById("stat-open").innerHTML = `<strong>${openSpots}</strong>Plätze frei`;
-}
-
-// ── Render ────────────────────────────────────────────────────────────────────
-function render() {
+  // Build day map
   const days = {};
-  Object.values(allTasks).forEach(t => {
-    const k = t.dayNumber;
-    if (!days[k]) days[k] = { label: t.dayLabel, subtitle: t.daySubtitle, tasks: [] };
-    days[k].tasks.push(t);
+  tasks.forEach(t => {
+    if (!days[t.dayNumber]) days[t.dayNumber] = { label: t.dayLabel, subtitle: t.daySubtitle, date: t.date || parseDateFromSubtitle(t.daySubtitle) || "", tasks:[] };
+    days[t.dayNumber].tasks.push(t);
   });
 
-  const helpersByTask = {};
-  Object.values(allHelpers).forEach(h => {
-    helpersByTask[h.taskId] = (helpersByTask[h.taskId] || 0) + 1;
-  });
-
-  const sorted = Object.keys(days).sort((a, b) => Number(a) - Number(b));
+  const today = new Date().toISOString().split("T")[0];
   const urlTag = new URLSearchParams(location.search).get("tag");
 
-  let html = "";
-  sorted.forEach(dayKey => {
-    const day = days[dayKey];
-    const tasks = day.tasks.sort((a, b) => (a.order || 0) - (b.order || 0));
-
-    let totalNeeded = 0, totalFilled = 0;
-    tasks.forEach(t => {
-      if (!t.done) {
-        totalNeeded += (t.neededPersons || 0);
-        totalFilled += Math.min((helpersByTask[t.id] || 0), t.neededPersons || 0);
-      }
-    });
-    const open = totalNeeded - totalFilled;
-    const allDone = tasks.every(t => t.done);
-    const shouldOpen = urlTag === String(dayKey);
-
-    let dotClass = "dot-open", badgeClass = "badge-needed";
-    let badgeText = open > 0 ? `${open} Platz${open !== 1 ? "ätze" : ""} frei` : "Besetzt ✓";
-    if (allDone) { dotClass = "dot-done"; badgeClass = "badge-done"; badgeText = "Fertig ✓"; }
-    else if (open <= 0) badgeClass = "badge-full";
-
-    html += `<div class="day-card${shouldOpen ? " open" : ""}" id="day-${dayKey}">
-      <div class="day-header" onclick="toggleDay('day-${dayKey}')">
-        <div class="day-dot ${dotClass}"></div>
-        <div class="day-info">
-          <div class="day-title">${day.label}</div>
-          <div class="day-sub">${day.subtitle}</div>
-        </div>
-        <span class="day-badge ${badgeClass}">${badgeText}</span>
-        <span class="day-chevron">▼</span>
-      </div>
-      <div class="day-tasks">`;
-
-    tasks.forEach(task => {
-      const count = helpersByTask[task.id] || 0;
-      const needed = task.neededPersons;
-      const spotsLeft = needed !== null ? Math.max(0, needed - count) : null;
-
-      const spotsHtml = needed !== null
-        ? `<span class="spots-tag ${spotsLeft > 0 ? "spots-needed" : "spots-full"}">${spotsLeft > 0 ? `${spotsLeft} von ${needed} frei` : "Besetzt ✓"}</span>`
-        : "";
-
-      const toolsHtml = task.tools?.length
-        ? `<div class="task-tools">Werkzeug: ${task.tools.join(", ")}</div>` : "";
-      const notesHtml = task.notes
-        ? `<div class="task-detail" style="color:var(--teal-dark);margin-top:2px">${task.notes}</div>` : "";
-      const btnHtml = !task.done
-        ? `<button class="btn-register" onclick="openModal('${task.id}')">Eintragen →</button>` : "";
-
-      html += `<div class="task-item ${task.done ? "done-task" : ""}">
-        ${task.done ? '<span class="task-done-icon">✓</span>' : ""}
-        <div class="task-body">
-          <div class="task-title">${task.title}</div>
-          <div class="task-meta">
-            <span class="skill-badge skill-${task.skillLevel}">${SKILL_LABELS[task.skillLevel]}</span>
-            ${task.estimatedHours !== null ? `<span class="task-detail">ca. ${task.estimatedHours}h</span>` : ""}
-            ${spotsHtml}
-          </div>
-          ${toolsHtml}${notesHtml}${btnHtml}
-        </div>
-      </div>`;
-    });
-
-    html += `</div></div>`;
+  // Categorize days: past (by date) or all-done → hidden; rest → visible
+  const futureDays = [], hiddenDays = [];
+  Object.keys(days).sort((a,b)=>Number(a)-Number(b)).forEach(k => {
+    const d = days[k];
+    const isPast = d.date && d.date < today;
+    const isDone = d.tasks.length > 0 && d.tasks.every(t => t.done);
+    if (isPast || isDone) hiddenDays.push({ k, d, isDone, isPast });
+    else futureDays.push({ k, d });
   });
 
-  document.getElementById("main-content").innerHTML = html || '<div class="loading">Lädt…</div>';
+  // Featured: next 2 upcoming days
+  const featuredKeys = new Set(futureDays.slice(0, 2).map(x => x.k));
+  if (urlTag) featuredKeys.add(String(urlTag));
 
-  // Scroll to tag if specified
+  let html = "";
+
+  // ── Next tasks overview ──
+  const nextTasks = Object.values(allTasks)
+    .filter(t => !t.done)
+    .sort((a,b) => a.dayNumber - b.dayNumber || (a.order||0) - (b.order||0))
+    .slice(0, 3);
+  if (nextTasks.length) {
+    html += `<div class="section-title">Als nächstes anstehend</div>`;
+    const SKILL = { jeder:"✋ Jeder willkommen", handwerklich:"🔧 Handwerklich", fachkenntnisse:"⚡ Fachkenntnisse" };
+    nextTasks.forEach(t => {
+      html += `<div style="background:#fffbe6;border:1.5px solid #fde235;border-radius:12px;padding:13px 15px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.88rem;font-weight:700;color:#212222;margin-bottom:3px">${t.title}</div>
+          <div style="font-size:.72rem;color:#7a7570;margin-bottom:2px">${t.dayLabel} · ~${t.estimatedHours??0}h/Person · ${t.neededPersons??1} Personen</div>
+          <div style="font-size:.7rem;color:#7a7570">${SKILL[t.skillLevel]||""}</div>
+        </div>
+        <button onclick="openModal(${t.dayNumber})" style="padding:8px 14px;background:#fde235;color:#212222;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;flex-shrink:0">Helfen →</button>
+      </div>`;
+    });
+  }
+
+  // ── Featured / upcoming days with week dividers ──
+  if (futureDays.length > 0) {
+    html += `<div class="section-title">Alle Tage</div>`;
+    let lastWeek = null;
+    let weekNum = 0;
+    futureDays.forEach(({ k, d }) => {
+      const week = getISOWeek(d.date);
+      if (week !== lastWeek) {
+        if (lastWeek !== null) html += `<div class="week-divider"></div>`;
+        weekNum++;
+        html += `<div class="week-label">Woche ${weekNum}</div>`;
+        lastWeek = week;
+      }
+      const featured = featuredKeys.has(k);
+      html += renderDayCard(k, d, { featured, open: featured || urlTag === k, past: false });
+    });
+  }
+
+  // ── Hidden days (past + done) ──
+  if (hiddenDays.length > 0) {
+    const doneCount = hiddenDays.filter(x => x.isDone && !x.isPast).length;
+    const pastCount = hiddenDays.filter(x => x.isPast).length;
+    const label = [doneCount > 0 ? `${doneCount} erledigt` : "", pastCount > 0 ? `${pastCount} vergangen` : ""].filter(Boolean).join(", ");
+    html += `<div class="past-toggle" onclick="togglePast()">
+      <span id="past-toggle-label">▶ ${label} – anzeigen</span>
+    </div>
+    <div id="past-days" class="hidden">`;
+    hiddenDays.forEach(({ k, d }) => {
+      html += renderDayCard(k, d, { featured: false, open: false, past: true });
+    });
+    html += `</div>`;
+  }
+
+  document.getElementById("main-content").innerHTML = html;
+
   if (urlTag) {
     setTimeout(() => {
       const el = document.getElementById(`day-${urlTag}`);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 100);
+    }, 150);
   }
 }
 
-function toggleDay(id) {
-  document.getElementById(id).classList.toggle("open");
+function parseDateFromSubtitle(sub) {
+  if (!sub) return "";
+  const months = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+  const m = sub.match(/(\d+)\.\s+(\w+)\s+(\d{4})/);
+  if (!m) return "";
+  const mo = months.indexOf(m[2]);
+  if (mo < 0) return "";
+  return `${m[3]}-${String(mo+1).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
 }
 
-// ── Modal ─────────────────────────────────────────────────────────────────────
-let currentTaskId = null;
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T12:00:00");
+  const wd = ["So","Mo","Di","Mi","Do","Fr","Sa"][d.getDay()];
+  const day = d.getDate();
+  const mon = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"][d.getMonth()];
+  return `${wd} · ${day}. ${mon}`;
+}
 
-function openModal(taskId) {
-  currentTaskId = taskId;
-  const task = allTasks[taskId];
-  if (!task) return;
+function getISOWeek(dateStr) {
+  if (!dateStr) return 0;
+  const d = new Date(dateStr + "T12:00:00");
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate() + 4 - (d.getDay()||7));
+  const yearStart = new Date(d.getFullYear(),0,1);
+  return Math.ceil((((d-yearStart)/86400000)+1)/7);
+}
 
-  const toolChecks = task.tools?.length
-    ? `<div class="form-group">
-        <label class="form-label">Werkzeug aus der Aufgabe, das ich mitbringen kann</label>
-        <div class="tools-grid">${task.tools.map(t =>
-          `<label class="tool-check"><input type="checkbox" name="tool" value="${t}"> ${t}</label>`
-        ).join("")}</div>
-      </div>` : "";
+function renderDayCard(k, d, { featured, open, past }) {
+  const dn = Number(k);
+  const helpers = Object.values(allHelpers).filter(h => h.dayNumber === dn);
+  const openTasks = d.tasks.filter(t => !t.done).sort((a,b)=>(a.order||0)-(b.order||0));
+  const allDone = openTasks.length === 0;
+  const today = new Date().toISOString().split("T")[0];
+  const isToday = d.date === today;
+
+  const neededHours = openTasks.reduce((s,t) => s + (t.estimatedHours||0)*(t.neededPersons||1), 0);
+  const coveredHours = helpers.reduce((s,h) => {
+    if (!h.timeFrom || !h.timeTo) return s + 4;
+    const [fh,fm] = h.timeFrom.split(":").map(Number);
+    const [th,tm] = h.timeTo.split(":").map(Number);
+    return s + Math.max(0, (th+tm/60)-(fh+fm/60));
+  }, 0);
+  const capPct = neededHours > 0 ? Math.min(100, Math.round(coveredHours/neededHours*100)) : 0;
+
+  let dotClass, badgeClass, badgeText;
+  if (isToday && !allDone) {
+    dotClass = "dot-today"; badgeClass = "badge-today"; badgeText = "HEUTE";
+  } else if (allDone) {
+    dotClass = "dot-done"; badgeClass = "badge-done"; badgeText = "Fertig ✓";
+  } else if (helpers.length > 0) {
+    dotClass = "dot-active"; badgeClass = "badge-active"; badgeText = `${helpers.length} Helfer dabei`;
+  } else {
+    dotClass = "dot-open"; badgeClass = "badge-needed";
+    badgeText = neededHours > 0 ? `~${Math.round(neededHours)}h · Helfer gesucht` : "Helfer gesucht";
+  }
+
+  const previewTasks = openTasks.slice(0, 4).map(t => t.title);
+  const moreCount = openTasks.length > 4 ? openTasks.length - 4 : 0;
+  const chips = helpers.map(h => {
+    const time  = h.timeFrom ? ` · ${h.timeFrom}${h.timeTo?"–"+h.timeTo:""}` : "";
+    const skill = h.skillLevel === "handwerklich" ? " 🔧" : "";
+    return `<div class="helper-chip">${h.name}${skill}${time}</div>`;
+  }).join("");
+
+  const weekClass = dn <= 1 ? "day-card-w1" : dn <= 7 ? "day-card-w2" : "day-card-w3";
+
+  const cardClass = [
+    "day-card",
+    (!featured && !isToday && !past) ? weekClass : "",
+    featured ? "day-card-featured" : "",
+    isToday  ? "day-card-today"    : "",
+    past     ? "day-card-past"     : "",
+    open     ? "open"              : ""
+  ].filter(Boolean).join(" ");
+
+  const dateFormatted = dn === 0 ? "Vorbereitung" : formatDate(d.date);
+  const timeDisplay = dn === 0 ? "" : `<div class="day-time">ab 08:00 Uhr</div>`;
+
+  const doneTasks = d.tasks.filter(t => t.done).length;
+  const totalTasks = d.tasks.length;
+  const taskCounter = totalTasks > 0
+    ? `<span class="day-task-counter">${doneTasks}/${totalTasks}</span>`
+    : "";
+
+  return `<div class="${cardClass}" id="day-${k}">
+    <div class="day-header" onclick="toggleDay('day-${k}')">
+      <div class="day-dot ${dotClass}"></div>
+      <div class="day-info">
+        <div class="day-date">${dateFormatted}</div>
+        ${timeDisplay}
+        <div class="day-label-small">Tag ${k} ${taskCounter}</div>
+      </div>
+      <span class="day-badge ${badgeClass}">${badgeText}</span>
+      <span class="day-chevron">▼</span>
+    </div>
+    <div class="day-tasks">
+      <div class="day-tasks-inner">
+        ${!allDone && neededHours > 0 ? `
+        <div class="day-cap-bar">
+          <div class="day-cap-row">
+            <span>~${Math.round(neededHours)}h Arbeit · ${openTasks.reduce((s,t)=>s+(t.neededPersons||1),0)} Personen</span>
+            <span>${capPct}% abgedeckt</span>
+          </div>
+          <div class="day-cap-track"><div class="day-cap-fill${capPct>=100?" cap-full":""}" style="width:${capPct}%"></div></div>
+        </div>` : ""}
+        ${previewTasks.length ? `<div class="task-preview">
+          <span class="task-preview-label">Geplante Aufgaben: </span>${previewTasks.join(" · ")}${moreCount?` <em>+${moreCount} weitere</em>`:""}
+        </div>` : ""}
+        ${chips ? `<div class="helpers-chips-row">${chips}</div>` : ""}
+        ${!allDone ? `<button class="btn-register" onclick="openModal(${dn})">Für diesen Tag eintragen →</button>` : ""}
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleDay(id) { document.getElementById(id).classList.toggle("open"); }
+
+function togglePast() {
+  const el = document.getElementById("past-days");
+  const label = document.getElementById("past-toggle-label");
+  const hidden = el.classList.toggle("hidden");
+  const count = el.querySelectorAll(".day-card").length;
+  label.textContent = hidden
+    ? `▶ ${count} vergangene Tage anzeigen`
+    : `▼ Vergangene Tage ausblenden`;
+}
+
+// ── Share ───────────────────────────────────────────────────────────────────
+async function shareDay(dn, label) {
+  const url = `${location.origin}${location.pathname}?tag=${dn}`;
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: `Foyer-Umbau · ${label}`, text: `Kannst du helfen? ${label}`, url });
+    } else {
+      await navigator.clipboard.writeText(url);
+      showToast("Link kopiert!");
+    }
+  } catch {}
+}
+
+function showToast(msg) {
+  let t = document.getElementById("toast");
+  if (!t) { t = document.createElement("div"); t.id="toast"; t.className="toast"; document.body.appendChild(t); }
+  t.textContent = msg; t.classList.add("toast-show");
+  setTimeout(() => t.classList.remove("toast-show"), 2200);
+}
+
+// ── Modal ───────────────────────────────────────────────────────────────────
+let currentDayNumber = null;
+
+function openModal(dayNumber) {
+  currentDayNumber = dayNumber;
+  const dayTasks   = Object.values(allTasks).filter(t => t.dayNumber === dayNumber);
+  const dayLabel   = dayTasks[0]?.dayLabel    || `Tag ${dayNumber}`;
+  const daySubtitle= dayTasks[0]?.daySubtitle || "";
 
   document.getElementById("modal-body").innerHTML = `
-    <div class="modal-title">${task.title}</div>
-    <div class="modal-sub">${task.dayLabel} · ${task.daySubtitle}</div>
+    <div class="modal-title">${dayLabel}</div>
+    <div class="modal-sub">${daySubtitle}</div>
     <form id="reg-form">
       <div class="form-group">
         <label class="form-label">Dein Name *</label>
-        <input class="form-input" type="text" id="f-name" placeholder="Vorname Nachname" required>
+        <input class="form-input" type="text" id="f-name" placeholder="Vorname Nachname" required autocomplete="name">
       </div>
       <div class="form-group">
         <label class="form-label">Uhrzeit (optional)</label>
@@ -225,17 +415,29 @@ function openModal(taskId) {
         </div>
       </div>
       <div class="form-group">
+        <label class="form-label">Wie schätzt du dich ein?</label>
+        <div class="skill-radios">
+          <label class="skill-radio">
+            <input type="radio" name="skill" value="jeder" checked>
+            <span>✋ Ich komme zum Helfen</span>
+          </label>
+          <label class="skill-radio">
+            <input type="radio" name="skill" value="handwerklich">
+            <span>🔧 Handwerklich erfahren</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Werkzeug (optional)</label>
+        <input class="form-input" type="text" id="f-tools" placeholder="z.B. Akkuschrauber, Säge…">
+      </div>
+      <div class="form-group">
         <label class="form-label">Kommentar (optional)</label>
         <textarea class="form-input" id="f-comment" placeholder="z.B. Komme erst um 10, bringe meinen Sohn mit…"></textarea>
       </div>
-      ${toolChecks}
       <div class="form-group">
-        <label class="form-label">Weiteres Werkzeug das ich mitbringe (optional)</label>
-        <input class="form-input" type="text" id="f-tools-extra" placeholder="z.B. Stichsäge, Schleifpapier…">
-      </div>
-      <div class="form-group">
-        <label class="form-label">E-Mail (optional, für Bestätigung & Stornierungslink)</label>
-        <input class="form-input" type="email" id="f-email" placeholder="name@beispiel.de">
+        <label class="form-label">E-Mail (optional, für Stornierung)</label>
+        <input class="form-input" type="email" id="f-email" placeholder="name@beispiel.de" autocomplete="email">
       </div>
       <div class="modal-actions">
         <button type="button" class="btn-cancel" onclick="closeModal()">Abbrechen</button>
@@ -245,29 +447,28 @@ function openModal(taskId) {
 
   document.getElementById("reg-form").addEventListener("submit", submitRegistration);
   document.getElementById("modal-overlay").classList.remove("hidden");
-  document.getElementById("f-name").focus();
+  setTimeout(() => document.getElementById("f-name").focus(), 100);
 }
 
-function closeModal() {
-  document.getElementById("modal-overlay").classList.add("hidden");
-  currentTaskId = null;
-}
+function closeModal() { document.getElementById("modal-overlay").classList.add("hidden"); currentDayNumber = null; }
 document.getElementById("modal-overlay").addEventListener("click", e => {
   if (e.target === document.getElementById("modal-overlay")) closeModal();
 });
 
 async function submitRegistration(e) {
   e.preventDefault();
-  const task    = allTasks[currentTaskId];
-  const name    = document.getElementById("f-name").value.trim();
-  const from    = document.getElementById("f-from").value;
-  const to      = document.getElementById("f-to").value;
-  const comment = document.getElementById("f-comment").value.trim();
-  const email   = document.getElementById("f-email").value.trim();
-  const extraTools = document.getElementById("f-tools-extra").value.trim();
-  const checkedTools = [...document.querySelectorAll("input[name='tool']:checked")].map(i => i.value);
-  const allTools = [...checkedTools, ...(extraTools ? [extraTools] : [])];
-
+  const dayTasks   = Object.values(allTasks).filter(t => t.dayNumber === currentDayNumber);
+  const dayLabel   = dayTasks[0]?.dayLabel    || `Tag ${currentDayNumber}`;
+  const daySubtitle= dayTasks[0]?.daySubtitle || "";
+  const date       = dayTasks[0]?.date        || "";
+  const name       = document.getElementById("f-name").value.trim();
+  const timeFrom   = document.getElementById("f-from").value || null;
+  const timeTo     = document.getElementById("f-to").value   || null;
+  const skillLevel = document.querySelector("input[name='skill']:checked")?.value || "jeder";
+  const comment    = document.getElementById("f-comment").value.trim() || null;
+  const email      = document.getElementById("f-email").value.trim()   || null;
+  const toolsRaw   = document.getElementById("f-tools").value.trim();
+  const tools      = toolsRaw ? toolsRaw.split(",").map(s=>s.trim()).filter(Boolean) : [];
   if (!name) return;
 
   const btn = document.getElementById("submit-btn");
@@ -275,94 +476,87 @@ async function submitRegistration(e) {
 
   const cancelToken = Math.random().toString(36).substr(2, 14);
   const ref = db.ref("helpers").push();
+  await ref.set({ dayNumber: currentDayNumber, date, dayLabel, daySubtitle, name, timeFrom, timeTo, skillLevel, comment, email, tools, cancelToken, registeredAt: Date.now() });
 
-  await ref.set({
-    taskId: currentTaskId, taskTitle: task.title,
-    dayNumber: task.dayNumber, date: task.date, dayLabel: task.dayLabel,
-    name, from: from || null, to: to || null,
-    comment: comment || null, email: email || null,
-    tools: allTools, cancelToken,
-    registeredAt: Date.now()
-  });
+  // Send confirmation email if address given
+  if (email && CONFIG.emailjs.enabled) {
+    const cancelUrl = `${location.origin}${location.pathname.replace(/[^/]*$/, "cancel.html")}?id=${ref.key}&token=${cancelToken}`;
+    const calUrl = date ? buildGoogleCalUrl(date, dayLabel, daySubtitle, timeFrom, timeTo) : "";
+    const icalParams = new URLSearchParams({ ical:"1", date, label:dayLabel, sub:daySubtitle, from:timeFrom||"", to:timeTo||"" });
+    const icalUrl = `${location.origin}${location.pathname}?${icalParams}`;
+    emailjs.send(CONFIG.emailjs.serviceId, CONFIG.emailjs.templateId, {
+      to_email:     email,
+      to_name:      name,
+      name,
+      email,
+      day_label:    dayLabel,
+      day_subtitle: daySubtitle,
+      cancel_url:   cancelUrl,
+      cal_url:      calUrl,
+      ical_url:     icalUrl
+    }).catch(err => console.error("EmailJS Fehler:", err));
+  }
 
-  showSuccess({ name, task, from, to, tools: allTools, comment, helperId: ref.key, cancelToken, email });
+  showSuccess({ name, dayLabel, daySubtitle, date, timeFrom, timeTo, tools, comment, helperId: ref.key, cancelToken });
 }
 
-function showSuccess({ name, task, from, to, tools, comment, helperId, cancelToken }) {
-  const helpersByTask = {};
-  Object.values(allHelpers).forEach(h => {
-    helpersByTask[h.taskId] = (helpersByTask[h.taskId] || 0) + 1;
-  });
-  const suggestion = Object.values(allTasks).find(t =>
-    t.dayNumber !== task.dayNumber && !t.done && t.neededPersons !== null &&
-    (helpersByTask[t.id] || 0) < t.neededPersons
-  );
-
-  const timeStr = from ? ` · ${from}${to ? "–" + to : " Uhr"}` : "";
-  const cancelUrl = `${location.origin}${location.pathname.replace("index.html","").replace(/\/$/,"")+"/"}cancel.html?id=${helperId}&token=${cancelToken}`;
-
-  const suggHtml = suggestion ? `<div class="suggestion-box">
-    <p>An <strong>${suggestion.dayLabel}</strong> werden noch Helfer gesucht – auch dabei?</p>
-    <button class="btn-suggestion" onclick="closeAndOpen('${suggestion.id}')">Für weiteren Tag eintragen</button>
-  </div>` : "";
+function showSuccess({ name, dayLabel, daySubtitle, date, timeFrom, timeTo, tools, comment, helperId, cancelToken }) {
+  const helperDays = new Set(Object.values(allHelpers).map(h => h.dayNumber));
+  const nextDay = Object.values(allTasks).find(t => !t.done && t.dayNumber !== currentDayNumber && !helperDays.has(t.dayNumber));
+  const timeStr   = timeFrom ? ` · ${timeFrom}${timeTo?"–"+timeTo:""}` : "";
+  const cancelUrl = `${location.origin}${location.pathname.replace(/[^/]*$/,"cancel.html")}?id=${helperId}&token=${cancelToken}`;
+  const icalLink  = date ? generateIcalLink(date, dayLabel, daySubtitle, timeFrom, timeTo, name) : null;
 
   document.getElementById("modal-body").innerHTML = `
     <div class="success-card">
       <div class="success-icon">✓</div>
       <h2>Danke, ${name}!</h2>
-      <p>Du bist für <strong>${task.title}</strong><br>${task.dayLabel}${timeStr} eingetragen.</p>
-      ${tools.length ? `<p style="margin-top:5px;font-size:0.72rem;color:var(--text-muted)">Werkzeug: ${tools.join(", ")}</p>` : ""}
-      ${comment ? `<p style="margin-top:4px;font-size:0.72rem;color:var(--text-muted);font-style:italic">"${comment}"</p>` : ""}
-      <a class="btn-ical" href="${generateIcalLink(task, from, to, name)}" download="helfer-${task.date}.ics">📅 Zum Kalender hinzufügen</a>
-      ${suggHtml}
-      <button class="btn-cancel-entry" onclick="confirmCancel('${cancelUrl}')">Ich kann doch nicht kommen (Eintrag stornieren)</button>
-      <button class="btn-close-modal" onclick="closeModal()">Zur Übersicht zurück</button>
+      <p>Du bist für <strong>${dayLabel}</strong>${timeStr} eingetragen.</p>
+      ${tools.length ? `<p style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Werkzeug: ${tools.join(", ")}</p>` : ""}
+      ${comment     ? `<p style="font-size:.72rem;color:var(--text-muted);font-style:italic;margin-top:2px">"${comment}"</p>` : ""}
+      ${icalLink    ? `<a class="btn-ical" href="${icalLink}" download="helfer-${date}.ics">📅 Zum Kalender hinzufügen</a>` : ""}
+      ${nextDay ? `<div class="suggestion-box">
+        <p>An <strong>${nextDay.dayLabel}</strong> fehlen noch Helfer – auch dabei?</p>
+        <button class="btn-suggestion" onclick="closeAndOpen(${nextDay.dayNumber})">Für weiteren Tag eintragen</button>
+      </div>` : ""}
+      <button class="btn-cancel-entry" onclick="if(confirm('Eintrag wirklich stornieren?'))location.href='${cancelUrl}'">Ich kann doch nicht kommen</button>
+      <button class="btn-close-modal" onclick="closeModal()">Zur Übersicht</button>
     </div>`;
 }
 
-function confirmCancel(url) {
-  if (confirm("Möchtest du deinen Eintrag wirklich stornieren?")) {
-    window.location.href = url;
-  }
-}
+function closeAndOpen(dn) { closeModal(); setTimeout(() => openModal(dn), 200); }
 
-function closeAndOpen(taskId) {
-  closeModal();
-  setTimeout(() => openModal(taskId), 200);
-}
-
-// ── iCal ──────────────────────────────────────────────────────────────────────
-function generateIcalLink(task, from, to, name) {
-  const d = task.date.replace(/-/g, "");
-  const dtStartStr = from
-    ? `DTSTART:${d}T${from.replace(":", "").padEnd(4, "0")}00`
-    : `DTSTART;VALUE=DATE:${d}`;
-  const endTime = to || addHours(from || "09:00", task.estimatedHours || 2);
-  const dtEndStr = from
-    ? `DTEND:${d}T${endTime.replace(":", "").padEnd(4, "0")}00`
-    : `DTEND;VALUE=DATE:${nextDay(task.date).replace(/-/g, "")}`;
-
-  const ical = [
-    "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CG Foyer Umbau//DE","CALSCALE:GREGORIAN",
-    "BEGIN:VEVENT",
-    `UID:${task.id}-${Date.now()}@cg-foyer`,
-    dtStartStr, dtEndStr,
-    `SUMMARY:Helfen: ${task.title} – CG Foyer`,
-    `DESCRIPTION:Aufgabe: ${task.title}\\nHelfer: ${name}\\nOrt: ${CONFIG.venue.name}`,
+function generateIcalLink(date, label, subtitle, from, to, name) {
+  const d = date.replace(/-/g,"");
+  const startStr = from ? `DTSTART:${d}T${from.replace(":","").padEnd(4,"0")}00` : `DTSTART;VALUE=DATE:${d}`;
+  const endTime  = to || (from ? addHours(from, 4) : null);
+  const nextD    = (() => { const x=new Date(date); x.setDate(x.getDate()+1); return x.toISOString().split("T")[0].replace(/-/g,""); })();
+  const endStr   = from ? `DTEND:${d}T${endTime.replace(":","").padEnd(4,"0")}00` : `DTEND;VALUE=DATE:${nextD}`;
+  const ical = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CG Foyer Umbau//DE","CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",`UID:${d}-${Date.now()}@cg-foyer`,startStr,endStr,
+    `SUMMARY:Helfen beim Foyer-Umbau – CG Hemmingen`,
+    `DESCRIPTION:${label}\\n${subtitle}\\nHelfer: ${name}`,
     `LOCATION:${CONFIG.venue.name}\\, ${CONFIG.venue.address}\\, ${CONFIG.venue.city}`,
-    "END:VEVENT","END:VCALENDAR"
-  ].join("\r\n");
-
+    "END:VEVENT","END:VCALENDAR"].join("\r\n");
   return "data:text/calendar;charset=utf-8," + encodeURIComponent(ical);
+}
+function buildGoogleCalUrl(date, label, subtitle, from, to) {
+  const d = date.replace(/-/g, "");
+  const start = from ? `${d}T${from.replace(":","")}00` : d;
+  const end   = to   ? `${d}T${to.replace(":","")}00`   : from ? `${d}T${addHours(from,4).replace(":","")}00` : d;
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: `Helfen beim Foyer-Umbau – CG Hemmingen`,
+    dates: `${start}/${end}`,
+    details: `${label}\n${subtitle}`,
+    location: "Alte Schöckinger Str. 9, 71282 Hemmingen"
+  });
+  return `https://calendar.google.com/calendar/render?${params}`;
 }
 
 function addHours(t, h) {
-  const [hh, mm] = t.split(":").map(Number);
-  return `${String(Math.min(hh + Math.floor(h || 2), 23)).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-function nextDay(dateStr) {
-  const d = new Date(dateStr); d.setDate(d.getDate() + 1);
-  return d.toISOString().split("T")[0];
+  const [hh,mm] = t.split(":").map(Number);
+  return `${String(Math.min(hh+h,23)).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
 }
 </script>
 </body>
