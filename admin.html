@@ -146,7 +146,7 @@ function renderTasks() {
       <div class="admin-task-info">
         <div class="admin-task-title">${t.title}</div>
         <div class="admin-task-sub">${SKILL[t.skillLevel]} · ${t.neededPersons ?? "?"}p ·
-          <span class="quick-hours" title="Klicken zum Bearbeiten" onclick="editHours('${t.id}', ${t.estimatedHours ?? 0})">~${t.estimatedHours ?? "?"}h ✎</span>
+          <span class="quick-hours" title="Gesamtzeit bearbeiten" onclick="editHours('${t.id}', ${(t.estimatedHours||0)*(t.neededPersons||1)}, ${t.neededPersons||1})">~${Math.round((t.estimatedHours||0)*(t.neededPersons||1))}h gesamt ✎</span>
         </div>
         ${t.notes ? `<div class="admin-task-sub" style="color:var(--teal-dark)">${t.notes}</div>` : ""}
       </div>
@@ -164,11 +164,11 @@ async function deleteTask(id) {
   await db.ref(`tasks/${id}`).remove();
 }
 
-function editHours(id, current) {
-  const val = prompt("Geschätzte Stunden:", current);
+function editHours(id, totalCurrent, persons) {
+  const val = prompt(`Gesamtzeit für die Aufgabe (Stunden gesamt, ${persons} Personen):`, totalCurrent);
   if (val === null) return;
-  const num = parseFloat(val);
-  if (!isNaN(num) && num >= 0) db.ref(`tasks/${id}/estimatedHours`).set(num);
+  const total = parseFloat(val);
+  if (!isNaN(total) && total >= 0) db.ref(`tasks/${id}/estimatedHours`).set(Math.round(total / persons * 10) / 10);
 }
 
 // ── Drag & Drop ───────────────────────────────────────────────────────────────
