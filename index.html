@@ -55,12 +55,22 @@ let allTasks = {}, allHelpers = {}, prevHelperCount = 0;
     const subtitle = p.get("sub") || "";
     const from = p.get("from") || null;
     const to = p.get("to") || null;
+    document.body.innerHTML = `
+      <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f2f0ed;padding:32px;text-align:center;font-family:'Inter',-apple-system,sans-serif">
+        <div style="background:white;border-radius:20px;padding:40px 32px;max-width:360px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
+          <div style="font-size:3rem;margin-bottom:16px">⬇️</div>
+          <h2 style="font-size:1.2rem;font-weight:800;color:#212222;margin-bottom:8px">Download läuft</h2>
+          <p style="font-size:0.875rem;color:#7a7570;margin-bottom:4px">Die Kalender-Datei wurde heruntergeladen.</p>
+          <p style="font-size:0.875rem;color:#7a7570;margin-bottom:24px">Schau in deinen <strong style="color:#212222">Downloads-Ordner</strong> und öffne die <strong style="color:#212222">.ics-Datei</strong>.</p>
+          <a href="${location.pathname}" style="display:inline-block;padding:11px 24px;background:#fde235;color:#212222;border-radius:10px;font-size:0.875rem;font-weight:700;text-decoration:none">← Zurück zur Helfer-Seite</a>
+        </div>
+      </div>`;
     if (date) {
       setTimeout(() => {
         const link = generateIcalLink(date, label, subtitle, from, to, "Helfer");
         const a = document.createElement("a");
         a.href = link; a.download = `foyer-${date}.ics`; a.click();
-      }, 800);
+      }, 400);
     }
   }
 })();
