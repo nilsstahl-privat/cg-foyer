@@ -55,6 +55,11 @@
   <!-- Helfer-Kalender -->
   <div id="section-kalender" class="main hidden">
     <div class="section-title" style="padding-top:4px">Helfer-Kalender</div>
+    <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="display:flex;align-items:center;gap:5px;font-size:.75rem;color:var(--text-muted)"><span style="width:14px;height:14px;border-radius:3px;background:#fde235;display:inline-block"></span>Jeder willkommen</span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:.75rem;color:var(--text-muted)"><span style="width:14px;height:14px;border-radius:3px;background:#4aada9;display:inline-block"></span>Handwerklich</span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:.75rem;color:var(--text-muted)"><span style="width:14px;height:14px;border-radius:3px;background:#4a7fd4;display:inline-block"></span>Fachkenntnisse</span>
+    </div>
     <div id="kalender-container"></div>
   </div>
 
@@ -223,10 +228,19 @@ function renderHelpersByDay() {
         const emailStr  = h.email ? `<span style="color:var(--text-muted)"> · ${h.email}</span>` : "";
         const toolsStr  = h.tools?.length ? `<div class="admin-task-sub">🔧 ${h.tools.join(", ")}</div>` : "";
         const commentStr= h.comment ? `<div class="admin-task-sub" style="color:var(--teal-dark)">"${h.comment}"</div>` : "";
-        html += `<div class="admin-task-row">
+        const skillColors = { jeder:"#fffbe6", handwerklich:"#e6f6f5", fachkenntnisse:"#e8f0fe" };
+        const bg = skillColors[h.skillLevel] || "#f2f0ed";
+        html += `<div class="admin-task-row" style="background:${bg}">
           <div class="admin-task-info">
             <div class="admin-task-title">${h.name}${emailStr}</div>
-            <div class="admin-task-sub">${h.skillLevel === "handwerklich" ? "🔧" : h.skillLevel === "fachkenntnisse" ? "⚡" : "✋"} ${h.skillLevel}${timeStr}</div>
+            <div class="admin-task-sub" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <select onchange="updateHelperSkill('${h.id}',this.value)" style="font-size:.72rem;padding:2px 6px;border:1px solid #d0cdc8;border-radius:6px;background:white;cursor:pointer;font-family:inherit">
+                <option value="jeder" ${h.skillLevel==="jeder"?"selected":""}>✋ Jeder</option>
+                <option value="handwerklich" ${h.skillLevel==="handwerklich"?"selected":""}>🔧 Handwerklich</option>
+                <option value="fachkenntnisse" ${h.skillLevel==="fachkenntnisse"?"selected":""}>⚡ Fachkenntnisse</option>
+              </select>
+              <span>${timeStr.replace(" · ","")}</span>
+            </div>
             ${toolsStr}${commentStr}
           </div>
           <button class="btn-delete" onclick="deleteHelper('${h.id}','${h.name.replace(/'/g,"\\'")}')">✕</button>
@@ -279,8 +293,8 @@ function renderKalender() {
       const from = timeToPos(h.timeFrom);
       const to   = h.timeTo ? timeToPos(h.timeTo) : Math.min(100, from + (100/(DAY_END-DAY_START))*4);
       const width = Math.max(1, to - from);
-      const colors = ["#6fc3c1","#fde235","#b4a493","#a78bfa","#f97316","#34d399"];
-      const color = colors[i % colors.length];
+      const skillColor = { jeder:"#fde235", handwerklich:"#4aada9", fachkenntnisse:"#4a7fd4" };
+      const color = skillColor[h.skillLevel] || "#b4a493";
       return `<div title="${h.name} · ${h.timeFrom}${h.timeTo?"–"+h.timeTo:""}" style="position:absolute;left:${from}%;width:${width}%;top:${i*22}px;height:18px;background:${color};border-radius:4px;display:flex;align-items:center;padding:0 6px;overflow:hidden">
         <span style="font-size:.65rem;font-weight:700;color:#212222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${h.name}</span>
       </div>`;
@@ -311,6 +325,10 @@ function renderKalender() {
 async function deleteHelper(id, name) {
   if (!confirm(`Eintrag von "${name}" wirklich löschen?`)) return;
   await db.ref(`helpers/${id}`).remove();
+}
+
+function updateHelperSkill(id, skill) {
+  db.ref(`helpers/${id}/skillLevel`).set(skill);
 }
 
 // ── Task form ─────────────────────────────────────────────────────────────────
