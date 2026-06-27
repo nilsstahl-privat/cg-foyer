@@ -16,7 +16,6 @@
 
 <div class="page-nav">
   <a href="index.html">← Helfer-Seite</a>
-  <a href="dashboard.html">Übersicht</a>
 </div>
 
 <div id="auth-screen" class="auth-screen">
@@ -27,18 +26,38 @@
   <button class="btn-primary" style="width:100%;margin-top:12px" onclick="checkKey()">Weiter</button>
 </div>
 
-<div id="admin-content" class="main hidden">
-  <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 0">
-    <div class="section-title" style="padding:0">Aufgaben</div>
-    <button class="btn-export" onclick="exportCSV()">Export CSV</button>
+<div id="admin-content" class="hidden">
+
+  <!-- Tile Navigation -->
+  <div class="admin-tiles">
+    <button class="admin-tile active" onclick="showSection('aufgaben')" id="tile-aufgaben">📋 Aufgaben</button>
+    <button class="admin-tile" onclick="showSection('helfer')" id="tile-helfer">👥 Helfer nach Tag</button>
+    <button class="admin-tile" onclick="showSection('kalender')" id="tile-kalender">📅 Helfer-Kalender</button>
   </div>
 
-  <div class="filter-chips" id="day-filter"></div>
-  <button class="btn-add-task" onclick="openTaskForm(null)">+ Neue Aufgabe hinzufügen</button>
-  <div id="tasks-container"></div>
+  <!-- Aufgaben -->
+  <div id="section-aufgaben" class="main">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 0">
+      <div class="section-title" style="padding:0">Aufgaben</div>
+      <button class="btn-export" onclick="exportCSV()">Export CSV</button>
+    </div>
+    <div class="filter-chips" id="day-filter"></div>
+    <button class="btn-add-task" onclick="openTaskForm(null)">+ Neue Aufgabe hinzufügen</button>
+    <div id="tasks-container"></div>
+  </div>
 
-  <div class="section-title" style="margin-top:8px">Helfer-Übersicht</div>
-  <div id="helpers-container"></div>
+  <!-- Helfer nach Tag -->
+  <div id="section-helfer" class="main hidden">
+    <div class="section-title" style="padding-top:4px">Helfer nach Tag</div>
+    <div id="helpers-by-day-container"></div>
+  </div>
+
+  <!-- Helfer-Kalender -->
+  <div id="section-kalender" class="main hidden">
+    <div class="section-title" style="padding-top:4px">Helfer-Kalender</div>
+    <div id="kalender-container"></div>
+  </div>
+
 </div>
 
 <!-- Task modal -->
@@ -71,8 +90,16 @@ document.getElementById("key-input").addEventListener("keydown", e => { if (e.ke
 function authorize() {
   document.getElementById("auth-screen").classList.add("hidden");
   document.getElementById("admin-content").classList.remove("hidden");
-  db.ref("tasks").on("value",   snap => { allTasks   = snap.val() || {}; renderTasks(); });
-  db.ref("helpers").on("value", snap => { allHelpers = snap.val() || {}; renderHelpers(); });
+  db.ref("tasks").on("value",   snap => { allTasks   = snap.val() || {}; renderTasks(); renderHelpersByDay(); renderKalender(); });
+  db.ref("helpers").on("value", snap => { allHelpers = snap.val() || {}; renderTasks(); renderHelpersByDay(); renderKalender(); });
+}
+
+// ── Tile Navigation ───────────────────────────────────────────────────────────
+function showSection(name) {
+  ["aufgaben","helfer","kalender"].forEach(s => {
+    document.getElementById(`section-${s}`).classList.toggle("hidden", s !== name);
+    document.getElementById(`tile-${s}`).classList.toggle("active", s === name);
+  });
 }
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
@@ -89,27 +116,27 @@ function setFilter(day) { filterDay = day; renderTasks(); buildFilter(); }
 
 function renderTasks() {
   buildFilter();
-  const helpersByTask = {};
-  Object.values(allHelpers).forEach(h => { helpersByTask[h.taskId] = (helpersByTask[h.taskId] || 0) + 1; });
-
   const tasks = Object.values(allTasks)
     .filter(t => filterDay === null || t.dayNumber === filterDay)
     .sort((a, b) => a.dayNumber - b.dayNumber || (a.order || 0) - (b.order || 0));
+
+  const helpersByDay = {};
+  Object.values(allHelpers).forEach(h => { helpersByDay[h.dayNumber] = (helpersByDay[h.dayNumber] || 0) + 1; });
 
   const SKILL = { jeder: "✋ Jeder", handwerklich: "🔧 Handwerklich", fachkenntnisse: "⚡ Fachkenntnisse" };
   let lastDay = null, html = "";
 
   tasks.forEach(t => {
     if (t.dayLabel !== lastDay) {
-      html += `<div class="section-title" style="padding-top:12px">${t.dayLabel} <span style="font-weight:400;color:var(--text-muted)">· ${t.daySubtitle}</span></div>`;
+      const hCount = helpersByDay[t.dayNumber] || 0;
+      html += `<div class="section-title" style="padding-top:12px">${t.dayLabel} <span style="font-weight:400;color:var(--text-muted)">· ${t.daySubtitle} · ${hCount} Helfer</span></div>`;
       lastDay = t.dayLabel;
     }
-    const hCount = helpersByTask[t.id] || 0;
     html += `<div class="admin-task-row ${t.done ? "done-task" : ""}">
       <input type="checkbox" class="admin-task-check" ${t.done ? "checked" : ""} onchange="toggleDone('${t.id}', this.checked)">
       <div class="admin-task-info">
         <div class="admin-task-title">${t.title}</div>
-        <div class="admin-task-sub">${SKILL[t.skillLevel]} · ${t.neededPersons ?? "?"}p · ${hCount} Helfer</div>
+        <div class="admin-task-sub">${SKILL[t.skillLevel]} · ${t.neededPersons ?? "?"}p · ~${t.estimatedHours ?? "?"}h</div>
         ${t.notes ? `<div class="admin-task-sub" style="color:var(--teal-dark)">${t.notes}</div>` : ""}
       </div>
       <button class="btn-edit" onclick="openTaskForm('${t.id}')">Bearbeiten</button>
@@ -126,10 +153,97 @@ async function deleteTask(id) {
   await db.ref(`tasks/${id}`).remove();
 }
 
+// ── Helfer nach Tag ───────────────────────────────────────────────────────────
+function renderHelpersByDay() {
+  const days = {};
+  Object.values(allTasks).forEach(t => {
+    if (!days[t.dayNumber]) days[t.dayNumber] = { label: t.dayLabel, subtitle: t.daySubtitle, helpers: [] };
+  });
+  Object.entries(allHelpers).forEach(([id, h]) => {
+    if (days[h.dayNumber]) days[h.dayNumber].helpers.push({ id, ...h });
+  });
+
+  let html = "";
+  Object.keys(days).sort((a,b)=>Number(a)-Number(b)).forEach(k => {
+    const d = days[k];
+    html += `<div class="section-title" style="padding-top:12px">${d.label} <span style="font-weight:400;color:var(--text-muted)">· ${d.subtitle}</span></div>`;
+    if (!d.helpers.length) {
+      html += `<div style="font-size:0.82rem;color:var(--text-muted);padding:8px 0 4px">Noch keine Helfer</div>`;
+    } else {
+      d.helpers.sort((a,b) => (a.timeFrom||"").localeCompare(b.timeFrom||"")).forEach(h => {
+        const timeStr   = h.timeFrom ? ` · ${h.timeFrom}${h.timeTo ? "–"+h.timeTo : ""}` : "";
+        const emailStr  = h.email ? `<span style="color:var(--text-muted)"> · ${h.email}</span>` : "";
+        const toolsStr  = h.tools?.length ? `<div class="admin-task-sub">🔧 ${h.tools.join(", ")}</div>` : "";
+        const commentStr= h.comment ? `<div class="admin-task-sub" style="color:var(--teal-dark)">"${h.comment}"</div>` : "";
+        html += `<div class="admin-task-row">
+          <div class="admin-task-info">
+            <div class="admin-task-title">${h.name}${emailStr}</div>
+            <div class="admin-task-sub">${h.skillLevel === "handwerklich" ? "🔧" : h.skillLevel === "fachkenntnisse" ? "⚡" : "✋"} ${h.skillLevel}${timeStr}</div>
+            ${toolsStr}${commentStr}
+          </div>
+          <button class="btn-delete" onclick="deleteHelper('${h.id}','${h.name.replace(/'/g,"\\'")}')">✕</button>
+        </div>`;
+      });
+    }
+  });
+  document.getElementById("helpers-by-day-container").innerHTML = html || '<div class="empty-state">Noch keine Helfer</div>';
+}
+
+// ── Helfer-Kalender ───────────────────────────────────────────────────────────
+function renderKalender() {
+  const days = {};
+  Object.values(allTasks).forEach(t => {
+    if (!days[t.dayNumber]) days[t.dayNumber] = { label: t.dayLabel, subtitle: t.daySubtitle, date: t.date, helpers: [], tasks: [] };
+    days[t.dayNumber].tasks.push(t);
+  });
+  Object.entries(allHelpers).forEach(([id, h]) => {
+    if (days[h.dayNumber]) days[h.dayNumber].helpers.push({ id, ...h });
+  });
+
+  let html = "";
+  Object.keys(days).sort((a,b)=>Number(a)-Number(b)).forEach(k => {
+    const d = days[k];
+    const neededH = d.tasks.filter(t=>!t.done).reduce((s,t)=>s+(t.estimatedHours||0)*(t.neededPersons||1),0);
+    const coveredH = d.helpers.reduce((s,h)=>{
+      if (!h.timeFrom||!h.timeTo) return s+4;
+      const [fh,fm]=h.timeFrom.split(":").map(Number),[th,tm]=h.timeTo.split(":").map(Number);
+      return s+Math.max(0,(th+tm/60)-(fh+fm/60));
+    },0);
+    const pct = neededH > 0 ? Math.min(100,Math.round(coveredH/neededH*100)) : 0;
+    const color = pct >= 100 ? "#4aada9" : pct >= 50 ? "#fde235" : "#e0d8d0";
+
+    html += `<div style="background:white;border-radius:12px;padding:14px 16px;margin-bottom:10px;border:1.5px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div>
+          <div style="font-weight:700;font-size:.95rem">${d.label}</div>
+          <div style="font-size:.72rem;color:var(--text-muted)">${d.subtitle}</div>
+        </div>
+        <div style="text-align:right;font-size:.78rem;color:var(--text-muted)">${d.helpers.length} Helfer · ${pct}%</div>
+      </div>
+      <div style="background:#f2f0ed;border-radius:99px;height:6px;margin-bottom:10px">
+        <div style="background:${color};width:${pct}%;height:6px;border-radius:99px;transition:width .3s"></div>
+      </div>
+      ${d.helpers.length ? d.helpers.sort((a,b)=>(a.timeFrom||"").localeCompare(b.timeFrom||"")).map(h=>{
+        const time = h.timeFrom ? `${h.timeFrom}${h.timeTo?"–"+h.timeTo:""}` : "Uhrzeit offen";
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:1px solid var(--border);font-size:.82rem">
+          <span><strong>${h.name}</strong>${h.email ? ` · <span style="color:var(--text-muted)">${h.email}</span>` : ""}</span>
+          <span style="color:var(--text-muted);white-space:nowrap">${time}</span>
+        </div>`;
+      }).join("") : `<div style="font-size:.78rem;color:var(--text-muted)">Noch keine Helfer</div>`}
+    </div>`;
+  });
+  document.getElementById("kalender-container").innerHTML = html;
+}
+
+async function deleteHelper(id, name) {
+  if (!confirm(`Eintrag von "${name}" wirklich löschen?`)) return;
+  await db.ref(`helpers/${id}`).remove();
+}
+
 // ── Task form ─────────────────────────────────────────────────────────────────
 function openTaskForm(taskId) {
   const task = taskId ? allTasks[taskId] : null;
-  const dayNums = [...new Set(Object.values(allTasks).map(t => t.dayNumber))].sort((a, b) => a - b);
+  const dayNums = [...new Set(Object.values(allTasks).map(t => t.dayNumber))].sort((a,b)=>a-b);
   const dayOptions = dayNums.map(n => {
     const ref = Object.values(allTasks).find(x => x.dayNumber === n);
     const sel = task?.dayNumber === n ? "selected" : "";
@@ -156,9 +270,9 @@ function openTaskForm(taskId) {
       <div class="form-group">
         <label class="form-label">Skill-Level</label>
         <select class="form-input" id="tf-skill">
-          <option value="jeder" ${task?.skillLevel === "jeder" ? "selected" : ""}>✋ Jeder willkommen</option>
-          <option value="handwerklich" ${task?.skillLevel === "handwerklich" ? "selected" : ""}>🔧 Handwerklich</option>
-          <option value="fachkenntnisse" ${task?.skillLevel === "fachkenntnisse" ? "selected" : ""}>⚡ Fachkenntnisse</option>
+          <option value="jeder" ${task?.skillLevel==="jeder"?"selected":""}>✋ Jeder willkommen</option>
+          <option value="handwerklich" ${task?.skillLevel==="handwerklich"?"selected":""}>🔧 Handwerklich</option>
+          <option value="fachkenntnisse" ${task?.skillLevel==="fachkenntnisse"?"selected":""}>⚡ Fachkenntnisse</option>
         </select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -167,7 +281,7 @@ function openTaskForm(taskId) {
       </div>
       <div class="form-group">
         <label class="form-label">Werkzeug (kommagetrennt)</label>
-        <input class="form-input" type="text" id="tf-tools" value="${(task?.tools || []).join(", ")}">
+        <input class="form-input" type="text" id="tf-tools" value="${(task?.tools||[]).join(", ")}">
       </div>
       <div class="form-group">
         <label class="form-label">Hinweis / Notiz</label>
@@ -195,23 +309,21 @@ async function saveTask(e, taskId) {
   e.preventDefault();
   const daySelect = document.getElementById("tf-day").value;
   let dayNumber, dayLabel, daySubtitle, date;
-
   if (daySelect === "new") {
     dayNumber   = Number(document.getElementById("tf-daynum").value);
     dayLabel    = document.getElementById("tf-daylabel").value.trim();
     date        = document.getElementById("tf-date").value;
     const d     = new Date(date);
-    daySubtitle = date ? d.toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" }) : "";
+    daySubtitle = date ? d.toLocaleDateString("de-DE",{day:"2-digit",month:"long",year:"numeric"}) : "";
   } else {
     dayNumber = Number(daySelect);
     const sel = document.getElementById("tf-day");
     const opt = sel.options[sel.selectedIndex];
     dayLabel    = opt.dataset.label;
     daySubtitle = opt.dataset.subtitle;
-    date        = Object.values(allTasks).find(t => t.dayNumber === dayNumber)?.date || "";
+    date        = Object.values(allTasks).find(t=>t.dayNumber===dayNumber)?.date || "";
   }
-
-  const tools = document.getElementById("tf-tools").value.split(",").map(s => s.trim()).filter(Boolean);
+  const tools = document.getElementById("tf-tools").value.split(",").map(s=>s.trim()).filter(Boolean);
   const data = {
     dayNumber, dayLabel, daySubtitle, date,
     title:          document.getElementById("tf-title").value.trim(),
@@ -221,56 +333,22 @@ async function saveTask(e, taskId) {
     tools, notes: document.getElementById("tf-notes").value.trim(),
     done: taskId ? (allTasks[taskId]?.done || false) : false
   };
-
-  if (taskId) {
-    await db.ref(`tasks/${taskId}`).update(data);
-  } else {
-    const id = `custom-${Date.now()}`;
-    await db.ref(`tasks/${id}`).set({ id, ...data });
-  }
+  if (taskId) await db.ref(`tasks/${taskId}`).update(data);
+  else { const id = `custom-${Date.now()}`; await db.ref(`tasks/${id}`).set({ id, ...data }); }
   closeTaskModal();
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function renderHelpers() {
-  const helpers = Object.entries(allHelpers)
-    .map(([id, h]) => ({ id, ...h }))
-    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-
-  document.getElementById("helpers-container").innerHTML = helpers.length
-    ? helpers.map(h => {
-        const timeStr = h.from ? ` · ${h.from}${h.to ? "–" + h.to : " Uhr"}` : "";
-        const emailStr = h.email ? ` · ${h.email}` : "";
-        const toolsHtml = h.tools?.length ? `<div class="admin-helper-tools">Werkzeug: ${h.tools.join(", ")}</div>` : "";
-        const commentHtml = h.comment ? `<div class="admin-helper-comment">"${h.comment}"</div>` : "";
-        return `<div class="admin-helper-row">
-          <div class="admin-helper-info">
-            <div class="admin-helper-name">${h.name}</div>
-            <div class="admin-helper-detail">${h.dayLabel} · ${h.taskTitle}${timeStr}${emailStr}</div>
-            ${toolsHtml}${commentHtml}
-          </div>
-          <button class="btn-delete" onclick="deleteHelper('${h.id}', '${h.name}')">✕</button>
-        </div>`;
-      }).join("")
-    : '<div class="empty-state">Noch keine Helfer</div>';
-}
-
-async function deleteHelper(id, name) {
-  if (!confirm(`Eintrag von "${name}" wirklich löschen?`)) return;
-  await db.ref(`helpers/${id}`).remove();
 }
 
 // ── CSV Export ────────────────────────────────────────────────────────────────
 function exportCSV() {
   const helpers = Object.values(allHelpers);
   if (!helpers.length) { alert("Noch keine Helfer eingetragen."); return; }
-  const rows = [["Name", "Tag", "Aufgabe", "Datum", "Von", "Bis", "E-Mail", "Werkzeug", "Kommentar"]];
+  const rows = [["Name","Tag","Datum","Von","Bis","E-Mail","Skill","Werkzeug","Kommentar"]];
   helpers.forEach(h => {
-    rows.push([h.name, h.dayLabel, h.taskTitle, h.date, h.from || "", h.to || "", h.email || "", (h.tools || []).join("; "), h.comment || ""]);
+    rows.push([h.name,h.dayLabel,h.date,h.timeFrom||"",h.timeTo||"",h.email||"",h.skillLevel||"",(h.tools||[]).join("; "),h.comment||""]);
   });
-  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
   const a = document.createElement("a");
-  a.href = "data:text/csv;charset=utf-8," + encodeURIComponent("﻿" + csv);
+  a.href = "data:text/csv;charset=utf-8,﻿" + encodeURIComponent(csv);
   a.download = `helfer-export-${new Date().toISOString().split("T")[0]}.csv`;
   a.click();
 }
