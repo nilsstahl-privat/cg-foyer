@@ -114,6 +114,8 @@ function buildFilter() {
 }
 function setFilter(day) { filterDay = day; renderTasks(); buildFilter(); }
 
+let dragId = null;
+
 function renderTasks() {
   buildFilter();
   const tasks = Object.values(allTasks)
@@ -132,11 +134,15 @@ function renderTasks() {
       html += `<div class="section-title" style="padding-top:12px">${t.dayLabel} <span style="font-weight:400;color:var(--text-muted)">· ${t.daySubtitle} · ${hCount} Helfer</span></div>`;
       lastDay = t.dayLabel;
     }
-    html += `<div class="admin-task-row ${t.done ? "done-task" : ""}">
+    html += `<div class="admin-task-row ${t.done ? "done-task" : ""}" draggable="true" data-id="${t.id}" data-day="${t.dayNumber}"
+      ondragstart="onDragStart(event)" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragend="onDragEnd(event)">
+      <span style="cursor:grab;color:var(--text-muted);font-size:1rem;padding-right:4px;touch-action:none">⠿</span>
       <input type="checkbox" class="admin-task-check" ${t.done ? "checked" : ""} onchange="toggleDone('${t.id}', this.checked)">
       <div class="admin-task-info">
         <div class="admin-task-title">${t.title}</div>
-        <div class="admin-task-sub">${SKILL[t.skillLevel]} · ${t.neededPersons ?? "?"}p · ~${t.estimatedHours ?? "?"}h</div>
+        <div class="admin-task-sub">${SKILL[t.skillLevel]} · ${t.neededPersons ?? "?"}p ·
+          <span class="quick-hours" title="Klicken zum Bearbeiten" onclick="editHours('${t.id}', ${t.estimatedHours ?? 0})">~${t.estimatedHours ?? "?"}h ✎</span>
+        </div>
         ${t.notes ? `<div class="admin-task-sub" style="color:var(--teal-dark)">${t.notes}</div>` : ""}
       </div>
       <button class="btn-edit" onclick="openTaskForm('${t.id}')">Bearbeiten</button>
@@ -151,6 +157,48 @@ function toggleDone(id, val) { db.ref(`tasks/${id}/done`).set(val); }
 async function deleteTask(id) {
   if (!confirm("Aufgabe wirklich löschen?")) return;
   await db.ref(`tasks/${id}`).remove();
+}
+
+function editHours(id, current) {
+  const val = prompt("Geschätzte Stunden:", current);
+  if (val === null) return;
+  const num = parseFloat(val);
+  if (!isNaN(num) && num >= 0) db.ref(`tasks/${id}/estimatedHours`).set(num);
+}
+
+// ── Drag & Drop ───────────────────────────────────────────────────────────────
+function onDragStart(e) {
+  dragId = e.currentTarget.dataset.id;
+  e.currentTarget.style.opacity = "0.4";
+}
+function onDragEnd(e) {
+  e.currentTarget.style.opacity = "";
+  document.querySelectorAll(".admin-task-row").forEach(r => r.classList.remove("drag-over"));
+}
+function onDragOver(e) {
+  e.preventDefault();
+  document.querySelectorAll(".admin-task-row").forEach(r => r.classList.remove("drag-over"));
+  e.currentTarget.classList.add("drag-over");
+}
+function onDrop(e) {
+  e.preventDefault();
+  const targetId = e.currentTarget.dataset.id;
+  if (!dragId || dragId === targetId) return;
+  const dragDay  = allTasks[dragId]?.dayNumber;
+  const dropDay  = allTasks[targetId]?.dayNumber;
+  if (dragDay !== dropDay) return; // nur innerhalb des gleichen Tages
+
+  const dayTasks = Object.values(allTasks)
+    .filter(t => t.dayNumber === dragDay)
+    .sort((a,b) => (a.order||0)-(b.order||0));
+
+  const fromIdx = dayTasks.findIndex(t => t.id === dragId);
+  const toIdx   = dayTasks.findIndex(t => t.id === targetId);
+  dayTasks.splice(toIdx, 0, dayTasks.splice(fromIdx, 1)[0]);
+
+  const updates = {};
+  dayTasks.forEach((t, i) => { updates[`${t.id}/order`] = i; });
+  db.ref("tasks").update(updates);
 }
 
 // ── Helfer nach Tag ───────────────────────────────────────────────────────────

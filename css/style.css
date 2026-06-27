@@ -187,6 +187,10 @@ select.form-input { appearance: none; -webkit-appearance: none; background-image
 .admin-tile-icon { font-size: 1.5rem; line-height: 1; }
 .admin-tile-label { font-size: 0.72rem; font-weight: 700; color: var(--teal-dark); text-align: center; line-height: 1.2; }
 .admin-tile:not(.active) .admin-tile-label { color: var(--text-muted); }
+.quick-hours { cursor: pointer; color: var(--teal-dark); border-bottom: 1px dashed var(--teal); }
+.quick-hours:hover { color: var(--teal); }
+.admin-task-row.drag-over { border: 2px dashed var(--teal); background: var(--teal-light); }
+.admin-task-row[draggable] { cursor: grab; }
 
 /* Today banner */
 .today-banner { background: var(--teal-light); border: 1.5px solid #b8e5e4; border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; }
