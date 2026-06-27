@@ -501,7 +501,6 @@ function openModal(dayNumber) {
   document.getElementById("modal-body").innerHTML = `
     <div class="modal-title">${dayLabel}</div>
     <div class="modal-sub">${daySubtitle}</div>
-    ${taskListHtml}
     <form id="reg-form">
       <div class="form-group">
         <label class="form-label">Dein Name *</label>
@@ -531,6 +530,7 @@ function openModal(dayNumber) {
       <div class="form-group">
         <label class="form-label">Werkzeug (optional)</label>
         <input class="form-input" type="text" id="f-tools" placeholder="z.B. Akkuschrauber, Säge…">
+        ${taskListHtml}
       </div>
       <div class="form-group">
         <label class="form-label">Kommentar (optional)</label>
