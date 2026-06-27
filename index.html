@@ -293,7 +293,9 @@ function renderDayCard(k, d, { featured, open, past }) {
   } else if (allDone) {
     dotClass = "dot-done"; badgeClass = "badge-done"; badgeText = "Fertig ✓";
   } else if (helpers.length > 0) {
-    dotClass = "dot-active"; badgeClass = "badge-active"; badgeText = `${helpers.length} Helfer dabei`;
+    const remaining = Math.max(0, Math.round(neededHours - coveredHours));
+    dotClass = "dot-active"; badgeClass = "badge-active";
+    badgeText = remaining > 0 ? `${helpers.length} Helfer · noch ~${remaining}h offen` : `${helpers.length} Helfer dabei`;
   } else {
     dotClass = "dot-open"; badgeClass = "badge-needed";
     badgeText = neededHours > 0 ? `~${Math.round(neededHours)}h · Helfer gesucht` : "Helfer gesucht";

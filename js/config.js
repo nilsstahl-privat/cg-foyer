@@ -15,9 +15,9 @@ const CONFIG = {
     city: "71282 Hemmingen"
   },
   emailjs: {
-    enabled: false,
-    serviceId: "YOUR_SERVICE_ID",
-    templateId: "YOUR_TEMPLATE_ID",
-    publicKey: "YOUR_PUBLIC_KEY"
+    enabled: true,
+    serviceId: "service_zgb3o13",
+    templateId: "template_o1e1vdf",
+    publicKey: "I6eYxfztoVx76X1Nq"
   }
 };
