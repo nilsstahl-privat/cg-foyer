@@ -1,0 +1,21 @@
+CHRISTUSGEMEINDE HEMMINGEN
+FOYER-UMBAU
+2. – 18. Juli 2026
+Hallo {{name}}, danke fürs Mitmachen! 🙌
+Du bist jetzt eingetragen und wir freuen uns sehr auf deine Hilfe beim Foyer-Umbau.
+DEIN EINSATZTAG
+{{day_label}}
+{{day_subtitle}}
+{{#if time_from}}
+⏰ {{time_from}}{{#if time_to}} – {{time_to}}{{/if}} Uhr
+{{/if}}
+{{#if tools}}
+🧰 Du bringst mit: {{tools}}
+{{/if}} {{#if comment}}
+"{{comment}}"
+{{/if}}
+
+Falls sich doch etwas ändert, kannst du deinen Eintrag hier stornieren:
+Eintrag stornieren
+
+Bei Fragen: renovierung.foyer@gmail.com Alte Schöckinger Str. 9 · 71282 Hemmingen
