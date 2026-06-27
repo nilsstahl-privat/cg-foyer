@@ -49,16 +49,27 @@ if (!helperId || !cancelToken) {
     } else if (helper.cancelToken !== cancelToken) {
       show("⚠️", "Ungültiger Link", "Das Token stimmt nicht überein. Bitte nutze den originalen Stornierungslink.");
     } else {
-      // Show confirmation before deleting
+      const changeMode = params.get("change") === "1";
       screen.innerHTML = `
         <div class="icon">🗓️</div>
-        <h2>Eintrag stornieren?</h2>
-        <p><strong>${helper.name}</strong><br>${helper.dayLabel} · ${helper.taskTitle}</p>
+        <h2>Eintrag bearbeiten</h2>
+        <p><strong>${helper.name}</strong><br>${helper.dayLabel}</p>
         <br>
-        <button onclick="doCancel()" style="width:100%;padding:12px;background:#c0392b;color:white;border:none;border-radius:9px;font-size:0.9rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px">
-          Ja, Eintrag stornieren
+        <div id="change-time-section" style="${changeMode ? "" : "display:none"}">
+          <label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:4px">Neue Uhrzeit</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+            <input class="form-input" type="time" id="new-from" value="${helper.timeFrom||""}">
+            <input class="form-input" type="time" id="new-to" value="${helper.timeTo||""}">
+          </div>
+          <button onclick="doChangeTime()" style="width:100%;padding:12px;background:var(--teal);color:white;border:none;border-radius:9px;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px">Zeit speichern</button>
+        </div>
+        <button id="btn-show-change" onclick="document.getElementById('change-time-section').style.display='block';this.style.display='none'" style="width:100%;padding:12px;background:var(--teal);color:white;border:none;border-radius:9px;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px${changeMode ? ";display:none" : ""}">
+          Uhrzeit ändern
         </button>
-        <a href="index.html" style="display:block;text-align:center;font-size:0.82rem;color:var(--text-muted);padding:8px">Abbrechen – zurück zur Übersicht</a>`;
+        <button onclick="if(confirm('Eintrag wirklich stornieren?'))doCancel()" style="width:100%;padding:12px;background:#c0392b;color:white;border:none;border-radius:9px;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px">
+          Ich kann doch nicht kommen
+        </button>
+        <a href="index.html" style="display:block;text-align:center;font-size:.82rem;color:var(--text-muted);padding:8px">Abbrechen – zurück zur Übersicht</a>`;
     }
   });
 }
@@ -67,6 +78,15 @@ async function doCancel() {
   await db.ref(`helpers/${helperId}`).remove();
   show("✓", "Eintrag storniert", "Dein Eintrag wurde erfolgreich entfernt. Danke für deine Rückmeldung!",
     `<br><a href="index.html" style="display:inline-block;margin-top:12px;padding:10px 20px;background:var(--teal);color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.875rem">Neu eintragen</a>`);
+}
+
+async function doChangeTime() {
+  const from = document.getElementById("new-from").value || null;
+  const to   = document.getElementById("new-to").value   || null;
+  await db.ref(`helpers/${helperId}`).update({ timeFrom: from, timeTo: to });
+  const timeStr = from ? ` Von ${from}${to ? "–"+to : ""}` : " (ohne Uhrzeit)";
+  show("✓", "Zeit geändert", `Deine Uhrzeit wurde aktualisiert.${timeStr}`,
+    `<br><a href="index.html" style="display:inline-block;margin-top:12px;padding:10px 20px;background:var(--teal);color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.875rem">Zur Übersicht</a>`);
 }
 </script>
 </body>

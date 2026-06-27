@@ -33,6 +33,7 @@
     <button class="admin-tile active" onclick="showSection('aufgaben')" id="tile-aufgaben">📋 Aufgaben</button>
     <button class="admin-tile" onclick="showSection('helfer')" id="tile-helfer">👥 Helfer nach Tag</button>
     <button class="admin-tile" onclick="showSection('kalender')" id="tile-kalender">📅 Helfer-Kalender</button>
+    <button class="admin-tile" onclick="showSection('banner')" id="tile-banner">📢 Banner</button>
   </div>
 
   <!-- Aufgaben -->
@@ -48,8 +49,30 @@
 
   <!-- Helfer nach Tag -->
   <div id="section-helfer" class="main hidden">
-    <div class="section-title" style="padding-top:4px">Helfer nach Tag</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 0">
+      <div class="section-title" style="padding:0">Helfer nach Tag</div>
+      <button class="btn-add-task" onclick="openAddHelperForm()">+ Helfer hinzufügen</button>
+    </div>
     <div id="helpers-by-day-container"></div>
+  </div>
+
+  <!-- Banner -->
+  <div id="section-banner" class="main hidden">
+    <div class="section-title" style="padding-top:4px">Tagesansage</div>
+    <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:14px">Zeige eine farbige Hinweis-Box auf der Helfer-Seite an – z.B. für aktuelle Infos. Optional nur für ein bestimmtes Datum sichtbar.</p>
+    <div class="form-group">
+      <label class="form-label">Nachricht</label>
+      <textarea class="form-input" id="banner-text" rows="2" placeholder="z.B. Heute bitte den Seiteneingang benutzen!"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Datum (leer = immer anzeigen)</label>
+      <input class="form-input" type="date" id="banner-date">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn-submit" onclick="saveBanner()">Aktivieren</button>
+      <button class="btn-cancel" onclick="removeBanner()">Banner entfernen</button>
+    </div>
+    <div id="banner-status" style="margin-top:12px;font-size:.82rem;color:var(--text-muted)"></div>
   </div>
 
   <!-- Helfer-Kalender -->
@@ -97,11 +120,23 @@ function authorize() {
   document.getElementById("admin-content").classList.remove("hidden");
   db.ref("tasks").on("value",   snap => { allTasks   = snap.val() || {}; renderTasks(); renderHelpersByDay(); renderKalender(); });
   db.ref("helpers").on("value", snap => { allHelpers = snap.val() || {}; renderTasks(); renderHelpersByDay(); renderKalender(); });
+  db.ref("banner").on("value",  snap => {
+    const b = snap.val();
+    const status = document.getElementById("banner-status");
+    if (b && b.active) {
+      const dateStr = b.date ? ` (${b.date})` : " (immer)";
+      status.textContent = `✓ Banner aktiv${dateStr}: "${b.text}"`;
+      document.getElementById("banner-text").value = b.text;
+      document.getElementById("banner-date").value = b.date || "";
+    } else {
+      status.textContent = "Kein Banner aktiv.";
+    }
+  });
 }
 
 // ── Tile Navigation ───────────────────────────────────────────────────────────
 function showSection(name) {
-  ["aufgaben","helfer","kalender"].forEach(s => {
+  ["aufgaben","helfer","kalender","banner"].forEach(s => {
     document.getElementById(`section-${s}`).classList.toggle("hidden", s !== name);
     document.getElementById(`tile-${s}`).classList.toggle("active", s === name);
   });
@@ -426,6 +461,93 @@ async function saveTask(e, taskId) {
   };
   if (taskId) await db.ref(`tasks/${taskId}`).update(data);
   else { const id = `custom-${Date.now()}`; await db.ref(`tasks/${id}`).set({ id, ...data }); }
+  closeTaskModal();
+}
+
+// ── Banner ────────────────────────────────────────────────────────────────────
+function saveBanner() {
+  const text = document.getElementById("banner-text").value.trim();
+  if (!text) { alert("Bitte einen Text eingeben."); return; }
+  const date = document.getElementById("banner-date").value || null;
+  db.ref("banner").set({ text, date, active: true });
+}
+
+function removeBanner() {
+  db.ref("banner").remove();
+  document.getElementById("banner-text").value = "";
+  document.getElementById("banner-date").value = "";
+}
+
+// ── Helfer manuell hinzufügen ─────────────────────────────────────────────────
+function openAddHelperForm() {
+  const dayNums = [...new Set(Object.values(allTasks).map(t => t.dayNumber))].sort((a,b)=>a-b);
+  const dayOptions = dayNums.map(n => {
+    const ref = Object.values(allTasks).find(x => x.dayNumber === n);
+    return `<option value="${n}">${ref.dayLabel} – ${ref.daySubtitle}</option>`;
+  }).join("");
+
+  document.getElementById("task-modal-body").innerHTML = `
+    <div class="modal-title">Helfer hinzufügen</div>
+    <div style="height:12px"></div>
+    <form id="helper-form">
+      <div class="form-group">
+        <label class="form-label">Tag *</label>
+        <select class="form-input" id="hf-day" required>${dayOptions}</select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Name *</label>
+        <input class="form-input" type="text" id="hf-name" placeholder="Vorname Nachname" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Uhrzeit (optional)</label>
+        <div class="time-row">
+          <input class="form-input" type="time" id="hf-from">
+          <input class="form-input" type="time" id="hf-to">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Einschätzung</label>
+        <select class="form-input" id="hf-skill">
+          <option value="jeder">✋ Jeder willkommen</option>
+          <option value="handwerklich">🔧 Handwerklich</option>
+          <option value="fachkenntnisse">⚡ Fachkenntnisse</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Kommentar (optional)</label>
+        <input class="form-input" type="text" id="hf-comment" autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="closeTaskModal()">Abbrechen</button>
+        <button type="submit" class="btn-submit">Hinzufügen</button>
+      </div>
+    </form>`;
+
+  document.getElementById("helper-form").addEventListener("submit", saveManualHelper);
+  document.getElementById("task-modal-overlay").classList.remove("hidden");
+  setTimeout(() => document.getElementById("hf-name").focus(), 100);
+}
+
+async function saveManualHelper(e) {
+  e.preventDefault();
+  const dayNumber = Number(document.getElementById("hf-day").value);
+  const dayTask   = Object.values(allTasks).find(t => t.dayNumber === dayNumber);
+  const data = {
+    dayNumber,
+    dayLabel:    dayTask?.dayLabel    || `Tag ${dayNumber}`,
+    daySubtitle: dayTask?.daySubtitle || "",
+    date:        dayTask?.date        || "",
+    name:        document.getElementById("hf-name").value.trim(),
+    timeFrom:    document.getElementById("hf-from").value || null,
+    timeTo:      document.getElementById("hf-to").value   || null,
+    skillLevel:  document.getElementById("hf-skill").value,
+    comment:     document.getElementById("hf-comment").value.trim() || null,
+    tools: [], email: null,
+    cancelToken:   Math.random().toString(36).substr(2,14),
+    registeredAt:  Date.now(),
+    addedByAdmin:  true
+  };
+  await db.ref("helpers").push(data);
   closeTaskModal();
 }
 

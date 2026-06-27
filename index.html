@@ -10,6 +10,7 @@
 
 <div id="offline-banner" class="offline-banner">Keine Internetverbindung – Einträge werden nicht gespeichert.</div>
 <div id="countdown-banner" class="countdown-banner hidden"></div>
+<div id="banner-bar" style="display:none;background:#fde235;color:#2c2825;text-align:center;padding:10px 16px;font-size:0.875rem;font-weight:600;line-height:1.4"></div>
 
 <div class="header">
   <img src="assets/dots-light.svg" class="header-dots" alt="">
@@ -44,6 +45,19 @@
 firebase.initializeApp(CONFIG.firebase);
 const db = firebase.database();
 if (CONFIG.emailjs.enabled) emailjs.init(CONFIG.emailjs.publicKey);
+
+// Banner listener (Feature 7)
+db.ref("banner").on("value", snap => {
+  const b = snap.val();
+  const today = new Date().toISOString().split("T")[0];
+  const el = document.getElementById("banner-bar");
+  if (b && b.active && (!b.date || b.date === today)) {
+    el.textContent = b.text;
+    el.style.display = "block";
+  } else {
+    el.style.display = "none";
+  }
+});
 
 let allTasks = {}, allHelpers = {}, prevHelperCount = 0;
 
@@ -476,10 +490,18 @@ function openModal(dayNumber) {
   const dayLabel   = dayTasks[0]?.dayLabel    || `Tag ${dayNumber}`;
   const daySubtitle= dayTasks[0]?.daySubtitle || "";
 
+  const openTasks = dayTasks.filter(t => !t.done).sort((a,b)=>(a.order||0)-(b.order||0));
+  const taskListHtml = openTasks.length ? `
+    <div style="background:#f2f0ed;border-radius:8px;padding:8px 10px;margin:6px 0 10px">
+      <div style="font-size:0.68rem;font-weight:700;color:#6b6560;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Geplante Aufgaben</div>
+      ${openTasks.map(t => `<div style="font-size:0.78rem;color:#2c2825;padding:2px 0">• ${t.title}</div>`).join("")}
+    </div>` : "";
+
   document.getElementById("modal-body").innerHTML = `
     <div class="modal-title">${dayLabel}</div>
     <div class="modal-sub">${daySubtitle}</div>
     <div style="font-size:0.72rem;color:#4aada9;font-weight:600;margin-bottom:4px">⏰ Mögliche Arbeitszeit: 08:00 – 22:00 Uhr</div>
+    ${taskListHtml}
     <form id="reg-form">
       <div class="form-group">
         <label class="form-label">Dein Name *</label>
@@ -560,7 +582,9 @@ async function submitRegistration(e) {
 
   // Send confirmation email if address given
   if (email && CONFIG.emailjs.enabled) {
-    const cancelUrl = `${location.origin}${location.pathname.replace(/[^/]*$/, "cancel.html")}?id=${ref.key}&token=${cancelToken}`;
+    const cancelBase = `${location.origin}${location.pathname.replace(/[^/]*$/, "cancel.html")}?id=${ref.key}&token=${cancelToken}`;
+    const cancelUrl = cancelBase;
+    const changeUrl = `${cancelBase}&change=1`;
     const calUrl = date ? buildGoogleCalUrl(date, dayLabel, daySubtitle, timeFrom, timeTo) : "";
     const icalParams = new URLSearchParams({ ical:"1", date, label:dayLabel, sub:daySubtitle, from:timeFrom||"", to:timeTo||"" });
     const icalUrl = `${location.origin}${location.pathname}?${icalParams}`;
@@ -572,6 +596,7 @@ async function submitRegistration(e) {
       day_label:    dayLabel,
       day_subtitle: daySubtitle,
       cancel_url:   cancelUrl,
+      change_url:   changeUrl,
       cal_url:      calUrl,
       ical_url:     icalUrl
     }).catch(err => console.error("EmailJS Fehler:", err));
