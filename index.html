@@ -490,17 +490,17 @@ function openModal(dayNumber) {
   const dayLabel   = dayTasks[0]?.dayLabel    || `Tag ${dayNumber}`;
   const daySubtitle= dayTasks[0]?.daySubtitle || "";
 
-  const openTasks = dayTasks.filter(t => !t.done).sort((a,b)=>(a.order||0)-(b.order||0));
-  const taskListHtml = openTasks.length ? `
+  const openTasks = dayTasks.filter(t => !t.done);
+  const neededTools = [...new Set(openTasks.flatMap(t => t.tools || []))].filter(Boolean);
+  const taskListHtml = neededTools.length ? `
     <div style="background:#f2f0ed;border-radius:8px;padding:8px 10px;margin:6px 0 10px">
-      <div style="font-size:0.68rem;font-weight:700;color:#6b6560;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Geplante Aufgaben</div>
-      ${openTasks.map(t => `<div style="font-size:0.78rem;color:#2c2825;padding:2px 0">• ${t.title}</div>`).join("")}
+      <div style="font-size:0.68rem;font-weight:700;color:#6b6560;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">🔧 Benötigtes Werkzeug</div>
+      <div style="font-size:0.78rem;color:#2c2825">${neededTools.join(" · ")}</div>
     </div>` : "";
 
   document.getElementById("modal-body").innerHTML = `
     <div class="modal-title">${dayLabel}</div>
     <div class="modal-sub">${daySubtitle}</div>
-    <div style="font-size:0.72rem;color:#4aada9;font-weight:600;margin-bottom:4px">⏰ Mögliche Arbeitszeit: 08:00 – 22:00 Uhr</div>
     ${taskListHtml}
     <form id="reg-form">
       <div class="form-group">
