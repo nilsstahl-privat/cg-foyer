@@ -189,24 +189,84 @@ function render() {
 
   let html = "";
 
-  // ── Next tasks overview ──
-  const nextTasks = Object.values(allTasks)
-    .filter(t => !t.done)
-    .sort((a,b) => a.dayNumber - b.dayNumber || (a.order||0) - (b.order||0))
-    .slice(0, 3);
-  if (nextTasks.length) {
-    html += `<div class="section-title">Als nächstes anstehend</div>`;
-    const SKILL = { jeder:"✋ Jeder willkommen", handwerklich:"🔧 Handwerklich", fachkenntnisse:"⚡ Fachkenntnisse" };
-    nextTasks.forEach(t => {
-      html += `<div style="background:#fffbe6;border:1.5px solid #fde235;border-radius:12px;padding:13px 15px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:.88rem;font-weight:700;color:#212222;margin-bottom:3px">${t.title}</div>
-          <div style="font-size:.72rem;color:#7a7570;margin-bottom:2px">${t.dayLabel} · ~${t.estimatedHours??0}h/Person · ${t.neededPersons??1} Personen</div>
-          <div style="font-size:.7rem;color:#7a7570">${SKILL[t.skillLevel]||""}</div>
-        </div>
-        <button onclick="openModal(${t.dayNumber})" style="padding:8px 14px;background:#fde235;color:#212222;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;flex-shrink:0">Helfen →</button>
-      </div>`;
-    });
+  const renovationStart = "2026-07-02";
+  const renovationEnd   = "2026-07-18";
+  const duringRenovation = today >= renovationStart && today <= renovationEnd;
+
+  if (duringRenovation) {
+    // ── HEUTE ──
+    const todayDay = futureDays.find(({ d }) => d.date === today);
+    if (todayDay) {
+      const { k, d } = todayDay;
+      const openTasks = d.tasks.filter(t => !t.done);
+      const helpers   = Object.values(allHelpers).filter(h => h.dayNumber === Number(k));
+      const neededH   = openTasks.reduce((s,t) => s+(t.estimatedHours||0)*(t.neededPersons||1),0);
+      const coveredH  = helpers.reduce((s,h) => {
+        if (!h.timeFrom || !h.timeTo) return s+4;
+        const [fh,fm]=h.timeFrom.split(":").map(Number), [th,tm]=h.timeTo.split(":").map(Number);
+        return s+Math.max(0,(th+tm/60)-(fh+fm/60));
+      },0);
+      const remaining = Math.max(0, Math.round(neededH - coveredH));
+      html += `<div class="section-title">Heute · ${d.subtitle||d.label}</div>`;
+      if (openTasks.length === 0) {
+        html += `<div style="background:#e6f6f5;border:1.5px solid #6fc3c1;border-radius:12px;padding:14px 15px;margin-bottom:8px;font-size:.88rem;color:#1a7a8c;font-weight:600">✓ Alle Aufgaben für heute erledigt!</div>`;
+      } else {
+        openTasks.slice(0,4).forEach(t => {
+          const hNeeded = (t.estimatedHours||0)*(t.neededPersons||1);
+          html += `<div style="background:#fffbe6;border:1.5px solid #fde235;border-radius:12px;padding:13px 15px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:.88rem;font-weight:700;color:#212222;margin-bottom:3px">${t.title}</div>
+              <div style="font-size:.72rem;color:#7a7570">~${t.estimatedHours??0}h · ${t.neededPersons??1} Personen</div>
+            </div>
+            <button onclick="openModal(${k})" style="padding:8px 14px;background:#fde235;color:#212222;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;flex-shrink:0">Helfen →</button>
+          </div>`;
+        });
+        if (remaining > 0) {
+          html += `<div style="font-size:.75rem;color:#7a7570;margin-bottom:12px;padding:0 2px">
+            ${helpers.length} Helfer dabei · noch ~${remaining}h offen
+          </div>`;
+        }
+      }
+    }
+
+    // ── AUSBLICK ──
+    const upcomingDays = futureDays.filter(({ d }) => d.date > today).slice(0, 2);
+    if (upcomingDays.length) {
+      html += `<div class="section-title">Ausblick</div>`;
+      upcomingDays.forEach(({ k, d }) => {
+        const openT   = d.tasks.filter(t => !t.done);
+        const helpers = Object.values(allHelpers).filter(h => h.dayNumber === Number(k));
+        const neededH = openT.reduce((s,t) => s+(t.estimatedHours||0)*(t.neededPersons||1),0);
+        const dateFormatted = formatDate(d.date);
+        html += `<div style="background:white;border:1.5px solid #e3e0da;border-radius:12px;padding:13px 15px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.88rem;font-weight:700;color:#212222;margin-bottom:2px">${dateFormatted}</div>
+            <div style="font-size:.72rem;color:#7a7570">~${Math.round(neededH)}h Arbeit · ${helpers.length} Helfer dabei</div>
+          </div>
+          <button onclick="openModal(${k})" style="padding:8px 14px;background:#f2f0ed;color:#212222;border:1.5px solid #e3e0da;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit;flex-shrink:0">Eintragen →</button>
+        </div>`;
+      });
+    }
+  } else {
+    // ── Vor der Renovierung: Top 3 Aufgaben ──
+    const nextTasks = Object.values(allTasks)
+      .filter(t => !t.done)
+      .sort((a,b) => a.dayNumber - b.dayNumber || (a.order||0) - (b.order||0))
+      .slice(0, 3);
+    if (nextTasks.length) {
+      html += `<div class="section-title">Als nächstes anstehend</div>`;
+      const SKILL = { jeder:"✋ Jeder willkommen", handwerklich:"🔧 Handwerklich", fachkenntnisse:"⚡ Fachkenntnisse" };
+      nextTasks.forEach(t => {
+        html += `<div style="background:#fffbe6;border:1.5px solid #fde235;border-radius:12px;padding:13px 15px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.88rem;font-weight:700;color:#212222;margin-bottom:3px">${t.title}</div>
+            <div style="font-size:.72rem;color:#7a7570;margin-bottom:2px">${t.dayLabel} · ~${t.estimatedHours??0}h/Person · ${t.neededPersons??1} Personen</div>
+            <div style="font-size:.7rem;color:#7a7570">${SKILL[t.skillLevel]||""}</div>
+          </div>
+          <button onclick="openModal(${t.dayNumber})" style="padding:8px 14px;background:#fde235;color:#212222;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;flex-shrink:0">Helfen →</button>
+        </div>`;
+      });
+    }
   }
 
   // ── Featured / upcoming days with week dividers ──
