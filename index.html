@@ -392,7 +392,7 @@ function renderDayCard(k, d, { featured, open, past }) {
   ].filter(Boolean).join(" ");
 
   const dateFormatted = dn === 0 ? "Vorbereitung" : formatDate(d.date);
-  const timeDisplay = dn === 0 ? "" : `<div class="day-time">ab 08:00 Uhr</div>`;
+  const timeDisplay = dn === 0 ? "" : `<div class="day-time">08:00 – 22:00 Uhr · auch nach Feierabend!</div>`;
 
   const doneTasks = d.tasks.filter(t => t.done).length;
   const totalTasks = d.tasks.length;
@@ -479,6 +479,7 @@ function openModal(dayNumber) {
   document.getElementById("modal-body").innerHTML = `
     <div class="modal-title">${dayLabel}</div>
     <div class="modal-sub">${daySubtitle}</div>
+    <div style="font-size:0.72rem;color:#4aada9;font-weight:600;margin-bottom:4px">⏰ Mögliche Arbeitszeit: 08:00 – 22:00 Uhr · auch nach Feierabend willkommen!</div>
     <form id="reg-form">
       <div class="form-group">
         <label class="form-label">Dein Name *</label>
