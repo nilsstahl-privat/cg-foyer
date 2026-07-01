@@ -18,7 +18,7 @@ const CONFIG = {
     enabled: true,
     serviceId: "service_zgb3o13",
     templateId: "template_o1e1vdf",
-    adminTemplateId: "template_admin_notify",
+    adminTemplateId: "template_yv35p3i",
     publicKey: "I6eYxfztoVx76X1Nq"
   }
 };
