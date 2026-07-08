@@ -243,18 +243,22 @@ function onDrop(e) {
 
 // ── Helfer nach Tag ───────────────────────────────────────────────────────────
 function renderHelpersByDay() {
+  const today = new Date().toISOString().split("T")[0];
   const days = {};
   Object.values(allTasks).forEach(t => {
-    if (!days[t.dayNumber]) days[t.dayNumber] = { label: t.dayLabel, subtitle: t.daySubtitle, helpers: [] };
+    if (!days[t.dayNumber]) days[t.dayNumber] = { label: t.dayLabel, subtitle: t.daySubtitle, date: t.date || "", helpers: [] };
   });
   Object.entries(allHelpers).forEach(([id, h]) => {
     if (days[h.dayNumber]) days[h.dayNumber].helpers.push({ id, ...h });
   });
 
-  let html = "";
-  Object.keys(days).sort((a,b)=>Number(a)-Number(b)).forEach(k => {
+  const sortedKeys = Object.keys(days).sort((a,b)=>Number(a)-Number(b));
+  const activeKeys = sortedKeys.filter(k => !days[k].date || days[k].date >= today);
+  const pastKeys   = sortedKeys.filter(k => days[k].date && days[k].date < today);
+
+  function renderDayBlock(k) {
     const d = days[k];
-    html += `<div class="section-title" style="padding-top:12px">${d.label} <span style="font-weight:400;color:var(--text-muted)">· ${d.subtitle}</span></div>`;
+    let html = `<div class="section-title" style="padding-top:12px">${d.label} <span style="font-weight:400;color:var(--text-muted)">· ${d.subtitle}</span></div>`;
     if (!d.helpers.length) {
       html += `<div style="font-size:0.82rem;color:var(--text-muted);padding:8px 0 4px">Noch keine Helfer</div>`;
     } else {
@@ -282,7 +286,17 @@ function renderHelpersByDay() {
         </div>`;
       });
     }
-  });
+    return html;
+  }
+
+  let html = activeKeys.map(renderDayBlock).join("");
+  if (pastKeys.length) {
+    const archiveHtml = pastKeys.map(renderDayBlock).join("");
+    html += `<details style="margin-top:16px">
+      <summary style="font-size:.82rem;font-weight:700;color:var(--text-muted);cursor:pointer;padding:8px 0;list-style:none">▸ Archiv (${pastKeys.length} vergangene Tage)</summary>
+      <div style="opacity:.75">${archiveHtml}</div>
+    </details>`;
+  }
   document.getElementById("helpers-by-day-container").innerHTML = html || '<div class="empty-state">Noch keine Helfer</div>';
 }
 
@@ -311,8 +325,12 @@ function renderKalender() {
     hourMarkers.push({ h, pct });
   }
 
-  let html = "";
-  Object.keys(days).sort((a,b)=>Number(a)-Number(b)).forEach(k => {
+  const today = new Date().toISOString().split("T")[0];
+  const sortedKeys = Object.keys(days).sort((a,b)=>Number(a)-Number(b));
+  const activeKeys = sortedKeys.filter(k => !days[k].date || days[k].date >= today);
+  const pastKeys   = sortedKeys.filter(k => days[k].date && days[k].date < today);
+
+  function renderKalBlock(k) {
     const d = days[k];
     const sorted = [...d.helpers].sort((a,b)=>(a.timeFrom||"").localeCompare(b.timeFrom||""));
     const noTime = sorted.filter(h => !h.timeFrom);
@@ -336,8 +354,7 @@ function renderKalender() {
     }).join("");
 
     const timelineHeight = Math.max(30, withTime.length * 22 + 4);
-
-    html += `<div style="background:white;border-radius:12px;padding:14px 16px;margin-bottom:12px;border:1.5px solid var(--border)">
+    return `<div style="background:white;border-radius:12px;padding:14px 16px;margin-bottom:12px;border:1.5px solid var(--border)">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
         <div>
           <div style="font-weight:700;font-size:.95rem">${d.label}</div>
@@ -353,7 +370,16 @@ function renderKalender() {
       ${noTime.length ? `<div style="font-size:.75rem;color:var(--text-muted);margin-top:6px">Ohne Uhrzeit: ${noTime.map(h=>h.name).join(", ")}</div>` : ""}
       ${!d.helpers.length ? `<div style="font-size:.78rem;color:var(--text-muted)">Noch keine Helfer</div>` : ""}
     </div>`;
-  });
+  }
+
+  let html = activeKeys.map(renderKalBlock).join("");
+  if (pastKeys.length) {
+    const archiveHtml = pastKeys.map(renderKalBlock).join("");
+    html += `<details style="margin-top:8px">
+      <summary style="font-size:.82rem;font-weight:700;color:var(--text-muted);cursor:pointer;padding:8px 0;list-style:none">▸ Archiv (${pastKeys.length} vergangene Tage)</summary>
+      <div style="opacity:.75;margin-top:8px">${archiveHtml}</div>
+    </details>`;
+  }
   document.getElementById("kalender-container").innerHTML = html;
 }
 
