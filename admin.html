@@ -168,41 +168,52 @@ function renderTasks() {
 
   const SKILL = { jeder: "✋ Jeder", handwerklich: "🔧 Handwerklich", fachkenntnisse: "⚡ Fachkenntnisse" };
 
-  const activeTasks = tasks.filter(t => !t.date || t.date >= today);
-  const pastTasks   = tasks.filter(t => t.date && t.date < today);
+  const activeTasks   = tasks.filter(t => !t.date || t.date >= today);
+  const overdueTasks  = tasks.filter(t => t.date && t.date < today && !t.done);
+  const donePastTasks = tasks.filter(t => t.date && t.date < today && t.done);
 
-  function renderTaskBlock(taskList) {
+  function renderTaskRow(t) {
+    return `<div class="admin-task-row ${t.done ? "done-task" : ""}" draggable="true" data-id="${t.id}" data-day="${t.dayNumber}"
+      ondragstart="onDragStart(event)" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragend="onDragEnd(event)">
+      <span style="cursor:grab;color:var(--text-muted);font-size:1rem;padding-right:4px;touch-action:none">⠿</span>
+      <input type="checkbox" class="admin-task-check" ${t.done ? "checked" : ""} onchange="toggleDone('${t.id}', this.checked)">
+      <div class="admin-task-info">
+        <div class="admin-task-title">${t.title}</div>
+        <div class="admin-task-sub">${SKILL[t.skillLevel]} · ${t.neededPersons ?? "?"}p ·
+          <span class="quick-hours" title="Gesamtzeit bearbeiten" onclick="editHours('${t.id}', ${(t.estimatedHours||0)*(t.neededPersons||1)}, ${t.neededPersons||1})">~${Math.round((t.estimatedHours||0)*(t.neededPersons||1))}h gesamt ✎</span>
+        </div>
+        ${t.notes ? `<div class="admin-task-sub" style="color:var(--teal-dark)">${t.notes}</div>` : ""}
+      </div>
+      <button class="btn-edit" onclick="openTaskForm('${t.id}')">Bearbeiten</button>
+      <button class="btn-delete" onclick="deleteTask('${t.id}')">✕</button>
+    </div>`;
+  }
+
+  function renderTaskBlock(taskList, overdue) {
     let html = "", lastDay = null;
     taskList.forEach(t => {
       if (t.dayLabel !== lastDay) {
         const hCount = helpersByDay[t.dayNumber] || 0;
-        html += `<div class="section-title" style="padding-top:12px">${t.dayLabel} <span style="font-weight:400;color:var(--text-muted)">· ${t.daySubtitle} · ${hCount} Helfer</span></div>`;
+        if (overdue) {
+          html += `<div class="section-title" style="padding-top:12px;color:#c0392b">${t.dayLabel} <span style="font-size:.7rem;font-weight:700;background:#c0392b;color:white;padding:2px 8px;border-radius:20px;vertical-align:middle;margin-left:4px">⚠ Überfällig</span> <span style="font-weight:400;color:var(--text-muted)">· ${t.daySubtitle} · ${hCount} Helfer</span></div>`;
+        } else {
+          html += `<div class="section-title" style="padding-top:12px">${t.dayLabel} <span style="font-weight:400;color:var(--text-muted)">· ${t.daySubtitle} · ${hCount} Helfer</span></div>`;
+        }
         lastDay = t.dayLabel;
       }
-      html += `<div class="admin-task-row ${t.done ? "done-task" : ""}" draggable="true" data-id="${t.id}" data-day="${t.dayNumber}"
-        ondragstart="onDragStart(event)" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragend="onDragEnd(event)">
-        <span style="cursor:grab;color:var(--text-muted);font-size:1rem;padding-right:4px;touch-action:none">⠿</span>
-        <input type="checkbox" class="admin-task-check" ${t.done ? "checked" : ""} onchange="toggleDone('${t.id}', this.checked)">
-        <div class="admin-task-info">
-          <div class="admin-task-title">${t.title}</div>
-          <div class="admin-task-sub">${SKILL[t.skillLevel]} · ${t.neededPersons ?? "?"}p ·
-            <span class="quick-hours" title="Gesamtzeit bearbeiten" onclick="editHours('${t.id}', ${(t.estimatedHours||0)*(t.neededPersons||1)}, ${t.neededPersons||1})">~${Math.round((t.estimatedHours||0)*(t.neededPersons||1))}h gesamt ✎</span>
-          </div>
-          ${t.notes ? `<div class="admin-task-sub" style="color:var(--teal-dark)">${t.notes}</div>` : ""}
-        </div>
-        <button class="btn-edit" onclick="openTaskForm('${t.id}')">Bearbeiten</button>
-        <button class="btn-delete" onclick="deleteTask('${t.id}')">✕</button>
-      </div>`;
+      html += renderTaskRow(t);
     });
     return html;
   }
 
-  let html = renderTaskBlock(activeTasks);
-  if (pastTasks.length) {
-    const pastDayCount = new Set(pastTasks.map(t => t.dayNumber)).size;
+  let html = renderTaskBlock(overdueTasks, true);
+  html += renderTaskBlock(activeTasks, false);
+
+  if (donePastTasks.length) {
+    const pastDayCount = new Set(donePastTasks.map(t => t.dayNumber)).size;
     html += `<details style="margin-top:16px">
       <summary style="font-size:.82rem;font-weight:700;color:var(--text-muted);cursor:pointer;padding:8px 0;list-style:none">▸ Archiv (${pastDayCount} vergangene Tage)</summary>
-      <div style="opacity:.75">${renderTaskBlock(pastTasks)}</div>
+      <div style="opacity:.75">${renderTaskBlock(donePastTasks, false)}</div>
     </details>`;
   }
   document.getElementById("tasks-container").innerHTML = html || '<div class="empty-state">Keine Aufgaben</div>';
