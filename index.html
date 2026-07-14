@@ -59,7 +59,7 @@ db.ref("banner").on("value", snap => {
   }
 });
 
-let allTasks = {}, allHelpers = {}, prevHelperCount = 0;
+let allTasks = {}, allHelpers = {}, allDayMeta = {}, prevHelperCount = 0;
 
 // Auto-download .ics if opened from email calendar link
 (function() {
@@ -132,6 +132,9 @@ db.ref("tasks").once("value", snap => {
 
 db.ref("tasks").on("value",   snap => { allTasks   = snap.val() || {}; render(); });
 db.ref("helpers").on("value", snap => { allHelpers = snap.val() || {}; render(); });
+db.ref("days").on("value",    snap => { allDayMeta = snap.val() || {}; render(); });
+function dayStatus(dn) { return allDayMeta[dn]?.status || allDayMeta[String(dn)]?.status || "open"; }
+function dayNote(dn)   { return allDayMeta[dn]?.note   || allDayMeta[String(dn)]?.note   || ""; }
 
 // ── Stats ──────────────────────────────────────────────────────────────────
 function calcStats() {
@@ -198,8 +201,10 @@ function render() {
     else futureDays.push({ k, d });
   });
 
-  // Featured: next 2 upcoming days
-  const featuredKeys = new Set(futureDays.slice(0, 2).map(x => x.k));
+  // Featured: next 2 upcoming OPEN days (skip locked/preview)
+  const featuredKeys = new Set(
+    futureDays.filter(x => dayStatus(Number(x.k)) === "open").slice(0, 2).map(x => x.k)
+  );
   if (urlTag) featuredKeys.add(String(urlTag));
 
   let html = "";
@@ -244,8 +249,8 @@ function render() {
       }
     }
 
-    // ── AUSBLICK ──
-    const upcomingDays = futureDays.filter(({ d }) => d.date > today).slice(0, 2);
+    // ── AUSBLICK ── (nur offene Tage – gesperrte/Vorschau überspringen)
+    const upcomingDays = futureDays.filter(({ k, d }) => d.date > today && dayStatus(Number(k)) === "open").slice(0, 2);
     if (upcomingDays.length) {
       html += `<div class="section-title">Ausblick</div>`;
       upcomingDays.forEach(({ k, d }) => {
@@ -372,8 +377,15 @@ function renderDayCard(k, d, { featured, open, past }) {
   }, 0);
   const capPct = neededHours > 0 ? Math.min(100, Math.round(coveredHours/neededHours*100)) : 0;
 
+  const status = dayStatus(dn);
+  const note   = dayNote(dn);
+
   let dotClass, badgeClass, badgeText;
-  if (isToday && !allDone) {
+  if (status === "closed") {
+    dotClass = "dot-done"; badgeClass = "badge-done"; badgeText = "Fest vergeben ✓";
+  } else if (status === "preview") {
+    dotClass = "dot-open"; badgeClass = "badge-needed"; badgeText = "Vorschau";
+  } else if (isToday && !allDone) {
     dotClass = "dot-today"; badgeClass = "badge-today"; badgeText = "HEUTE";
   } else if (allDone) {
     dotClass = "dot-done"; badgeClass = "badge-done"; badgeText = "Fertig ✓";
@@ -428,7 +440,8 @@ function renderDayCard(k, d, { featured, open, past }) {
     </div>
     <div class="day-tasks">
       <div class="day-tasks-inner">
-        ${!allDone && neededHours > 0 ? `
+        ${note ? `<div style="background:#f2f0ed;border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:.78rem;color:#6b6560;font-weight:600">${status==="closed"?"🔒 ":status==="preview"?"👀 ":"ℹ️ "}${note}</div>` : ""}
+        ${status==="open" && !allDone && neededHours > 0 ? `
         <div class="day-cap-bar">
           <div class="day-cap-row">
             <span>~${Math.round(neededHours)}h Arbeit · ${openTasks.reduce((s,t)=>s+(t.neededPersons||1),0)} Personen</span>
@@ -439,8 +452,9 @@ function renderDayCard(k, d, { featured, open, past }) {
         ${previewTasks.length ? `<div class="task-preview">
           <span class="task-preview-label">Geplante Aufgaben: </span>${previewTasks.join(" · ")}${moreCount?` <em>+${moreCount} weitere</em>`:""}
         </div>` : ""}
+        ${status==="preview" ? `<div style="font-size:.75rem;color:#7a7570;margin-top:8px">Anmeldung wird später freigegeben.</div>` : ""}
         ${chips ? `<div class="helpers-chips-row">${chips}</div>` : ""}
-        ${!allDone ? `<button class="btn-register" onclick="openModal(${dn})">Für diesen Tag eintragen →</button>` : ""}
+        ${status==="open" && !allDone ? `<button class="btn-register" onclick="openModal(${dn})">Für diesen Tag eintragen →</button>` : ""}
       </div>
     </div>
   </div>`;
@@ -486,6 +500,9 @@ function showToast(msg) {
 let currentDayNumber = null;
 
 function openModal(dayNumber) {
+  const st = dayStatus(dayNumber);
+  if (st === "closed") { showToast("Dieser Tag ist bereits fest vergeben."); return; }
+  if (st === "preview") { showToast("Anmeldung für diesen Tag wird später freigegeben."); return; }
   currentDayNumber = dayNumber;
   const dayTasks   = Object.values(allTasks).filter(t => t.dayNumber === dayNumber);
   const dayLabel   = dayTasks[0]?.dayLabel    || `Tag ${dayNumber}`;
