@@ -135,6 +135,7 @@ db.ref("helpers").on("value", snap => { allHelpers = snap.val() || {}; render();
 db.ref("days").on("value",    snap => { allDayMeta = snap.val() || {}; render(); });
 function dayStatus(dn) { return allDayMeta[dn]?.status || allDayMeta[String(dn)]?.status || "open"; }
 function dayNote(dn)   { return allDayMeta[dn]?.note   || allDayMeta[String(dn)]?.note   || ""; }
+function dayProvisional(dn) { return !!(allDayMeta[dn]?.provisional || allDayMeta[String(dn)]?.provisional); }
 
 // ── Stats ──────────────────────────────────────────────────────────────────
 function calcStats() {
@@ -379,6 +380,7 @@ function renderDayCard(k, d, { featured, open, past }) {
 
   const status = dayStatus(dn);
   const note   = dayNote(dn);
+  const provisional = dayProvisional(dn);
 
   let dotClass, badgeClass, badgeText;
   if (status === "closed") {
@@ -392,10 +394,12 @@ function renderDayCard(k, d, { featured, open, past }) {
   } else if (helpers.length > 0) {
     const remaining = Math.max(0, Math.round(neededHours - coveredHours));
     dotClass = "dot-active"; badgeClass = "badge-active";
-    badgeText = remaining > 0 ? `${helpers.length} Helfer · noch ~${remaining}h offen` : `${helpers.length} Helfer dabei`;
+    badgeText = provisional ? `${helpers.length} dabei`
+      : (remaining > 0 ? `${helpers.length} Helfer · noch ~${remaining}h offen` : `${helpers.length} Helfer dabei`);
   } else {
     dotClass = "dot-open"; badgeClass = "badge-needed";
-    badgeText = neededHours > 0 ? `~${Math.round(neededHours)}h · Helfer gesucht` : "Helfer gesucht";
+    badgeText = provisional ? "Eintragen möglich"
+      : (neededHours > 0 ? `~${Math.round(neededHours)}h · Helfer gesucht` : "Helfer gesucht");
   }
 
   const previewTasks = openTasks.slice(0, 4).map(t => t.title);
@@ -441,7 +445,7 @@ function renderDayCard(k, d, { featured, open, past }) {
     <div class="day-tasks">
       <div class="day-tasks-inner">
         ${note ? `<div style="background:#f2f0ed;border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:.78rem;color:#6b6560;font-weight:600">${status==="closed"?"🔒 ":status==="preview"?"👀 ":"ℹ️ "}${note}</div>` : ""}
-        ${status==="open" && !allDone && neededHours > 0 ? `
+        ${status==="open" && !provisional && !allDone && neededHours > 0 ? `
         <div class="day-cap-bar">
           <div class="day-cap-row">
             <span>~${Math.round(neededHours)}h Arbeit · ${openTasks.reduce((s,t)=>s+(t.neededPersons||1),0)} Personen</span>
